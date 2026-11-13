@@ -1,68 +1,99 @@
 /**
- * static/js/main.js — Client-side JavaScript for Campus Lost & Found
+ * static/js/main.js — Client-side JavaScript
  *
- * Handles AJAX "Mark as Resolved" using fetch() with CSRF token.
- * No page reload needed — the badge updates live via DOM manipulation.
+ * 1. AJAX "Mark as Resolved" using fetch() with CSRF token
+ *    — badge updates live, no page reload needed.
+ * 2. Tab memory — the active tab (Lost / Found) persists across
+ *    page loads using localStorage.
  */
 
 document.addEventListener('DOMContentLoaded', function () {
 
-  // ── Get CSRF token from the cookie (Django sets it automatically) ──
+  // ── CSRF token helper (reads from Django's csrftoken cookie) ──
   function getCSRFToken() {
-    const name = 'csrftoken';
-    const cookies = document.cookie.split(';');
-    for (let cookie of cookies) {
-      cookie = cookie.trim();
-      if (cookie.startsWith(name + '=')) {
-        return cookie.substring(name.length + 1);
+    var name = 'csrftoken';
+    var cookies = document.cookie.split(';');
+    for (var i = 0; i < cookies.length; i++) {
+      var c = cookies[i].trim();
+      if (c.indexOf(name + '=') === 0) {
+        return c.substring(name.length + 1);
       }
     }
     return '';
   }
 
-  // ── Attach click handlers to all "Resolve" buttons ──
+  // ── AJAX Resolve ──────────────────────────────────────────────
   document.querySelectorAll('.resolve-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      const itemId = this.getAttribute('data-item-id');
-      const button = this;
+      var itemId = this.getAttribute('data-item-id');
+      var button = this;
 
-      // Confirm before resolving
       if (!confirm('Mark this item as resolved?')) return;
 
-      // Send AJAX POST request to the resolve endpoint
+      // Disable button to prevent double-clicks
+      button.disabled = true;
+      button.innerHTML = '<span class="spinner-border spinner-border-sm"></span> …';
+
       fetch('/item/' + itemId + '/resolve/', {
         method: 'POST',
         headers: {
           'X-CSRFToken': getCSRFToken(),
           'Content-Type': 'application/json',
         },
-        credentials: 'same-origin',    // Include session cookie
+        credentials: 'same-origin',
       })
-      .then(function (response) { return response.json(); })
-      .then(function (data) {
-        if (data.success) {
-          // Update the status badge without reloading
-          const badge = document.getElementById('status-badge-' + itemId);
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok && result.data.success) {
+          // Update badge text and colour
+          var badge = document.getElementById('status-badge-' + itemId);
           if (badge) {
             badge.textContent = 'Resolved';
             badge.className = 'badge bg-secondary';
           }
-          // Hide the resolve button (no longer needed)
-          button.style.display = 'none';
-          // Fade the card if on dashboard
-          const card = button.closest('.item-card');
-          if (card) {
-            card.classList.add('card-resolved');
-          }
+          // Remove the resolve button
+          button.remove();
+          // Fade the card
+          var card = button.closest ? button.closest('.item-card') : null;
+          if (card) card.classList.add('card-resolved');
         } else {
-          alert(data.error || 'Could not resolve the item.');
+          alert(result.data.error || 'Could not resolve the item.');
+          button.disabled = false;
+          button.innerHTML = '<i class="bi bi-check-circle"></i> Resolve';
         }
       })
       .catch(function (err) {
-        alert('Network error. Please try again.');
+        alert('Network error — please try again.');
         console.error(err);
+        button.disabled = false;
+        button.innerHTML = '<i class="bi bi-check-circle"></i> Resolve';
       });
     });
   });
-});
 
+  // ── Tab memory (localStorage) ────────────────────────────────
+  var TABS_KEY = 'dashboard_active_tab';
+  var tabEls = document.querySelectorAll('#itemTabs button[data-bs-toggle="tab"]');
+
+  // Restore saved tab on page load
+  var saved = localStorage.getItem(TABS_KEY);
+  if (saved) {
+    tabEls.forEach(function (tab) {
+      if (tab.getAttribute('data-bs-target') === saved) {
+        var bsTab = new bootstrap.Tab(tab);
+        bsTab.show();
+      }
+    });
+  }
+
+  // Save active tab whenever the user switches
+  tabEls.forEach(function (tab) {
+    tab.addEventListener('shown.bs.tab', function () {
+      localStorage.setItem(TABS_KEY, this.getAttribute('data-bs-target'));
+    });
+  });
+});

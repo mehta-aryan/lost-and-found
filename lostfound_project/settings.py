@@ -2,9 +2,9 @@
 Django settings for lostfound_project.
 
 MVT Mapping (for viva):
-  - Model  → items/models.py   (database schema, ORM)
-  - View   → items/views.py    (business logic, request handling)
-  - Template → items/templates/ (HTML presentation layer)
+  - Model    → items/models.py          (database schema via Django ORM)
+  - View     → items/views.py           (business logic, request handling)
+  - Template → items/templates/, templates/  (HTML presentation with DTL)
 """
 import os
 from pathlib import Path
@@ -15,15 +15,20 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ──────────────────────────────────────────────
-# SECURITY (change SECRET_KEY in production!)
+# SECURITY
+# In production set the DJANGO_SECRET_KEY environment variable.
+# The fallback value below is only for local development.
 # ──────────────────────────────────────────────
-SECRET_KEY = 'django-insecure-change-me-in-production-abc123xyz'
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-dev-only-change-me-abc123xyz',
+)
 DEBUG = True
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
 # ──────────────────────────────────────────────
 # COLLEGE EMAIL DOMAIN RESTRICTION
-# Change this to your college domain, e.g. "mycollege.edu"
+# ← Change "gmail.com" to your college domain, e.g. "mycollege.edu"
 # ──────────────────────────────────────────────
 ALLOWED_EMAIL_DOMAIN = "gmail.com"
 
@@ -37,7 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites',           # Required by allauth
+    'django.contrib.sites',           # Required by django-allauth
 
     # Third-party
     'allauth',                         # django-allauth core
@@ -71,15 +76,15 @@ ROOT_URLCONF = 'lostfound_project.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],   # Project-level templates
-        'APP_DIRS': True,                    # Also look in app templates/ dirs
+        'DIRS': [BASE_DIR / 'templates'],   # Project-level templates (base.html)
+        'APP_DIRS': True,                    # Also look in each app's templates/ dir
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',   # Required by allauth
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'items.context_processors.allowed_domain',   # Custom: ALLOWED_DOMAIN
+                'items.context_processors.allowed_domain',      # Adds ALLOWED_DOMAIN
             ],
         },
     },
@@ -116,8 +121,8 @@ USE_I18N = True
 USE_TZ = True
 
 # ──────────────────────────────────────────────
-# STATIC FILES (CSS, JS, images)
-# Served by Django in development via {% static %} tag
+# STATIC FILES (CSS, JS, images bundled with the project)
+# Served by Django in dev via {% static %} template tag
 # ──────────────────────────────────────────────
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']  # Project-level static folder
@@ -139,33 +144,41 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 SITE_ID = 1   # Required by allauth; matches the default Site object
 
 AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend',       # Default backend
-    'allauth.account.auth_backends.AuthenticationBackend',  # allauth backend
+    'django.contrib.auth.backends.ModelBackend',           # Default Django backend
+    'allauth.account.auth_backends.AuthenticationBackend', # allauth social backend
 ]
 
 # Allauth behaviour settings
 ACCOUNT_LOGIN_METHODS = {"email"}                      # Login via email (Google provides it)
 ACCOUNT_SIGNUP_FIELDS = ['email*']                     # Email is mandatory, skip username/password
-ACCOUNT_EMAIL_VERIFICATION = 'none'                    # Skip email verification (Google already verifies)
+ACCOUNT_EMAIL_VERIFICATION = 'none'                    # Skip verification (Google already verifies)
 SOCIALACCOUNT_AUTO_SIGNUP = True                       # Auto-create user on first Google login
 SOCIALACCOUNT_LOGIN_ON_GET = True                      # Skip the intermediate "Continue?" page
 
 LOGIN_URL = '/accounts/google/login/'                  # Redirect here when @login_required triggers
-LOGIN_REDIRECT_URL = '/'                               # After login, go to dashboard
-LOGOUT_REDIRECT_URL = '/'                              # After logout, go to landing / login page
+LOGIN_REDIRECT_URL = '/'                               # After login → dashboard
+LOGOUT_REDIRECT_URL = '/'                              # After logout → landing page
 
 # Google provider config
+# ← Replace these placeholders with your Google Cloud OAuth credentials
+#   (or add them as a SocialApp in Django admin — see README.md)
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'SCOPE': ['profile', 'email'],
         'AUTH_PARAMS': {'access_type': 'online'},
         'APP': {
-            'client_id': 'REPLACE_WITH_YOUR_GOOGLE_CLIENT_ID',       # ← set your key
-            'secret': 'REPLACE_WITH_YOUR_GOOGLE_CLIENT_SECRET',      # ← set your key
+            'client_id': 'REPLACE_WITH_YOUR_GOOGLE_CLIENT_ID',
+            'secret': 'REPLACE_WITH_YOUR_GOOGLE_CLIENT_SECRET',
             'key': '',
         },
     },
 }
 
-# Custom adapter to restrict login to the college email domain
+# Custom allauth adapter to restrict login to the college email domain
 SOCIALACCOUNT_ADAPTER = 'items.adapter.CollegeEmailAdapter'
+
+# ──────────────────────────────────────────────
+# IMAGE UPLOAD LIMITS (used by ItemReportForm validation)
+# ──────────────────────────────────────────────
+MAX_UPLOAD_SIZE_MB = 5                                 # Max image upload size in MB
+ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']

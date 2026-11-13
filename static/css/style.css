@@ -1,48 +1,56 @@
 /*
  * static/css/style.css — Custom styles for Campus Lost & Found
- * Works alongside Bootstrap 5.
+ * Complements Bootstrap 5.  Organised by component.
  */
 
-/* ── Floating quick-add button (bottom-right on every page) ── */
+/* ── Page layout ─────────────────────────────── */
+html { height: 100%; }
+body  { min-height: 100vh; display: flex; flex-direction: column; }
+main  { flex: 1; }
+
+/* ── Floating quick-add button (bottom-right) ── */
 .btn-floating {
   position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  width: 60px;
-  height: 60px;
+  bottom: 1.75rem;
+  right: 1.75rem;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1050;
-  transition: transform 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
-.btn-floating:hover {
-  transform: scale(1.1);
+.btn-floating:hover,
+.btn-floating:focus {
+  transform: scale(1.12);
+  box-shadow: 0 0.6rem 1.2rem rgba(0, 0, 0, 0.2) !important;
 }
 
-/* ── Item cards ── */
+/* ── Item cards ──────────────────────────────── */
 .item-card {
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  border: 1px solid rgba(0,0,0,.08);
 }
 .item-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1) !important;
 }
 
-/* Resolved items are slightly faded */
+/* Resolved items are visually subdued */
 .card-resolved {
-  opacity: 0.7;
+  opacity: 0.65;
+}
+.card-resolved:hover {
+  opacity: 0.85;
 }
 
-/* ── Login page centering ── */
-body {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-main {
-  flex: 1;
+/* ── Nav tabs ────────────────────────────────── */
+.nav-tabs .nav-link {
+  font-weight: 500;
 }
 
+/* ── Login page card ─────────────────────────── */
+.card { border-radius: 0.75rem; }
