@@ -1,0 +1,47 @@
+{% load static %}
+{# Reusable card partial — included from dashboard.html and my_reports.html #}
+<div class="col">
+  <div class="card h-100 shadow-sm item-card {% if item.status == 'RESOLVED' %}card-resolved{% endif %}">
+    {% if item.image %}
+    <img src="{{ item.image.url }}" class="card-img-top" alt="{{ item.title }}"
+         style="height:180px; object-fit:cover;">
+    {% else %}
+    <div class="card-img-top bg-light d-flex align-items-center justify-content-center"
+         style="height:180px;">
+      <i class="bi bi-image text-muted display-4"></i>
+    </div>
+    {% endif %}
+
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <h6 class="card-title mb-0">{{ item.title }}</h6>
+        <span class="badge {% if item.status == 'OPEN' %}bg-warning text-dark{% else %}bg-secondary{% endif %}"
+              id="status-badge-{{ item.pk }}">
+          {{ item.get_status_display }}
+        </span>
+      </div>
+      <p class="card-text text-muted small mb-1">
+        <i class="bi bi-geo-alt"></i> {{ item.location }}
+      </p>
+      <p class="card-text text-muted small mb-1">
+        <i class="bi bi-calendar"></i> {{ item.date }}
+      </p>
+      <p class="card-text text-muted small">
+        <i class="bi bi-person"></i> {{ item.posted_by.get_full_name|default:item.posted_by.username }}
+      </p>
+    </div>
+
+    <div class="card-footer bg-transparent border-top-0 d-flex justify-content-between">
+      <a href="{% url 'item_detail' item.pk %}" class="btn btn-sm btn-outline-primary">
+        View Details
+      </a>
+      {% if item.posted_by == user and item.status == 'OPEN' %}
+      <button class="btn btn-sm btn-outline-success resolve-btn"
+              data-item-id="{{ item.pk }}" title="Mark as Resolved">
+        <i class="bi bi-check-circle"></i> Resolve
+      </button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
