@@ -50,7 +50,7 @@
         {% if is_owner %}
           <h2>Manage this report</h2>
           <div class="btn-row">
-            {% if item.status == 'OPEN' %}
+            {% if item.status == 'OPEN' and can_resolve %}
             <button type="button" class="btn btn-primary resolve-btn" data-item-id="{{ item.pk }}"
                     data-url="{% url 'resolve_item' item.pk %}" data-reload>
               <i class="bi bi-check2-circle"></i> Mark resolved
@@ -60,37 +60,32 @@
             <a href="{% url 'delete_item' item.pk %}" class="btn btn-outline-danger"><i class="bi bi-trash"></i> Delete</a>
           </div>
         {% elif item.status == 'OPEN' %}
-          {% if my_claim %}
-            <h2>You've written to {{ poster }}</h2>
-            <div class="status-line">
-              <span class="chip chip-{{ my_claim.status|lower }}">{{ my_claim.get_status_display }}</span>
-              <span class="text-muted small">sent {{ my_claim.created_at|ago }}</span>
-            </div>
-            {% if my_claim.status == 'ACCEPTED' %}
-            <p>{{ poster }} accepted. Reach them at <a href="mailto:{{ item.posted_by.email }}">{{ item.posted_by.email }}</a>.</p>
-            {% elif my_claim.status == 'PENDING' %}
-            <p>They've been emailed. You'll hear back by email once they respond.</p>
-            {% endif %}
+          {% if my_conv %}
+            <a href="{% url 'chat_detail' my_conv.pk %}" class="btn btn-primary w-100">
+              <i class="bi bi-chat-dots"></i> Open chat
+            </a>
           {% else %}
             <h2>{% if item.report_type == 'LOST' %}Found this item?{% else %}Is this yours?{% endif %}</h2>
-            <p>
-              {% if item.report_type == 'LOST' %}Tell {{ poster }} where you found it and how to reach you.
-              {% else %}Describe something only the owner would know: what's inside, marks, a lock screen.{% endif %}
-              Your name and college email go with the message.
-            </p>
-            <form method="post" action="{% url 'claim_item' item.pk %}">
+            <p>{% if item.report_type == 'LOST' %}Tell {{ poster }} where you found it.{% else %}Describe something only the owner would know.{% endif %}</p>
+            <form method="post" action="{% url 'start_chat' item.pk %}">
               {% csrf_token %}
-              <label for="{{ claim_form.message.id_for_label }}" class="visually-hidden">Your message</label>
-              {{ claim_form.message }}
-              <div class="btn-row mt-2">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-send"></i> Send message</button>
-                <a class="btn btn-outline-secondary" href="mailto:{{ item.posted_by.email }}?subject={{ item.title|urlencode }}"><i class="bi bi-envelope"></i> Use my email app</a>
-              </div>
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-chat-dots"></i>
+                {% if item.report_type == 'LOST' %}I found this{% else %}This is mine{% endif %} — message {{ poster }}
+              </button>
             </form>
+          {% endif %}
+          {% if can_resolve %}
+          <div class="btn-row mt-2">
+            <button type="button" class="btn btn-outline-success resolve-btn w-100" data-item-id="{{ item.pk }}"
+                    data-url="{% url 'resolve_item' item.pk %}" data-reload>
+              <i class="bi bi-check2-circle"></i> Mark resolved (Staff)
+            </button>
+          </div>
           {% endif %}
         {% else %}
           <h2>This report is resolved</h2>
-          <p>The item has been returned, so messages are closed.</p>
+          <p>The item has been returned, so new chats cannot be started.</p>
         {% endif %}
         <div class="btn-row mt-1">
           <button type="button" class="btn btn-sm btn-outline-secondary" data-copy-link><i class="bi bi-link-45deg"></i> Copy link</button>
@@ -100,44 +95,32 @@
   </div>
 </div>
 
-{% if is_owner %}
-<section class="mt-5" id="messages">
-  <h2 class="h4 mb-3">Messages about this report <span class="text-muted tnum">({{ claims|length }})</span></h2>
-  {% if claims %}
+{# Owner: show chat list for this report #}
+{% if is_owner and conv_data %}
+<section class="mt-5" id="chats">
+  <h2 class="h4 mb-3">Chats about this report <span class="text-muted tnum">({{ conv_data|length }})</span></h2>
   <div class="claim-list">
-    {% for claim in claims %}
-    {% with cname=claim.claimant.get_full_name|default:claim.claimant.username %}
+    {% for cd in conv_data %}
+    {% with other=cd.conv.participant other_name=cd.conv.participant.get_full_name|default:cd.conv.participant.username %}
     <article class="claim">
-      <span class="avatar-sm" aria-hidden="true">{{ cname|first }}</span>
+      <span class="avatar-sm" aria-hidden="true">{{ other_name|first }}</span>
       <div>
         <div class="claim-head">
-          <strong>{{ cname }}</strong>
-          <a href="mailto:{{ claim.claimant.email }}">{{ claim.claimant.email }}</a>
-          <span class="when">{{ claim.created_at|ago }}</span>
-          <span class="chip chip-{{ claim.status|lower }}">{{ claim.get_status_display }}</span>
+          <strong>{{ other_name }}</strong>
+          <span class="when">{% if cd.last %}{{ cd.last.created_at|ago }}{% endif %}</span>
+          {% if cd.unread %}<span class="chip chip-claim">{{ cd.unread }} new</span>{% endif %}
         </div>
-        <p>{{ claim.message|linebreaksbr }}</p>
-        {% if claim.status == 'PENDING' and item.status == 'OPEN' %}
-        <div class="btn-row">
-          <form method="post" action="{% url 'accept_claim' claim.pk %}"
-                data-confirm="This marks the report as resolved and declines any other pending messages. {{ cname }} will be emailed."
-                data-confirm-title="Accept this message?" data-confirm-label="Accept">
-            {% csrf_token %}<button class="btn btn-sm btn-primary"><i class="bi bi-check2"></i> Accept</button>
-          </form>
-          <form method="post" action="{% url 'decline_claim' claim.pk %}"
-                data-confirm="{{ cname }} will be told you declined." data-confirm-title="Decline this message?" data-confirm-label="Decline" data-confirm-danger>
-            {% csrf_token %}<button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-lg"></i> Decline</button>
-          </form>
-        </div>
-        {% endif %}
+        {% if cd.last %}<p class="mb-1 text-muted small">{{ cd.last.body|truncatechars:120 }}</p>{% endif %}
+        <a href="{% url 'chat_detail' cd.conv.pk %}" class="btn btn-sm btn-outline-primary">Open chat</a>
       </div>
     </article>
     {% endwith %}
     {% endfor %}
   </div>
-  {% else %}
-  <div class="panel text-muted">No messages yet. When someone writes about this report, it shows up here and in your email.</div>
-  {% endif %}
+</section>
+{% elif is_owner %}
+<section class="mt-5">
+  <div class="panel text-muted">No chats yet. When someone messages about this report, it will appear here.</div>
 </section>
 {% endif %}
 

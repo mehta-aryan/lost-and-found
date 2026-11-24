@@ -25,7 +25,7 @@ from allauth.socialaccount.models import SocialAccount, SocialLogin
 
 from .adapter import CollegeEmailAdapter
 from .matching import find_matches, tokens
-from .models import Claim, ItemReport, UserProfile
+from .models import Conversation, ItemReport, Message, UserProfile
 
 TEMP_MEDIA = tempfile.mkdtemp()
 TODAY = date.today()
@@ -403,26 +403,23 @@ class DetailTests(BaseTestCase):
         response = self.client.get(reverse('item_detail', args=[self.lost_item.pk]))
         self.assertContains(response, 'Manage this report')
         self.assertContains(response, 'Mark resolved')
-        self.assertNotContains(response, 'Send message')
 
-    def test_visitor_sees_message_form_not_owner_actions(self):
+    def test_visitor_sees_chat_button_not_owner_actions(self):
         self.client.force_login(self.user2)
         response = self.client.get(reverse('item_detail', args=[self.lost_item.pk]))
-        self.assertContains(response, 'Found this item?')
-        self.assertContains(response, 'Send message')
+        self.assertContains(response, 'I found this')
         self.assertNotContains(response, 'Mark resolved')
 
-    def test_found_report_asks_for_proof(self):
+    def test_found_report_shows_this_is_mine(self):
         found = self.make_item()
         self.client.force_login(self.user1)
-        self.assertContains(self.client.get(reverse('item_detail', args=[found.pk])), 'Is this yours?')
+        self.assertContains(self.client.get(reverse('item_detail', args=[found.pk])), 'This is mine')
 
-    def test_resolved_item_closes_messages(self):
+    def test_resolved_item_shows_closed_state(self):
         self.lost_item.mark_resolved()
         self.client.force_login(self.user2)
         response = self.client.get(reverse('item_detail', args=[self.lost_item.pk]))
         self.assertContains(response, 'This report is resolved')
-        self.assertNotContains(response, 'Send message')
 
     def test_detail_shows_possible_match(self):
         self.make_item(title='Backpack blue', location='Library entrance')
@@ -431,24 +428,41 @@ class DetailTests(BaseTestCase):
         self.assertContains(response, 'Possible matches')
         self.assertContains(response, 'Backpack blue')
 
+    def test_no_other_user_email_in_detail_html(self):
+        """No other user's email address should ever appear on the item detail page."""
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        Message.objects.create(conversation=conv, sender=self.user2, body='I have your bag.')
+        self.client.force_login(self.user1)
+        response = self.client.get(reverse('item_detail', args=[self.lost_item.pk]))
+        self.assertNotContains(response, 'bob@gmail.com')
+        # Also check as visitor: poster's email must not appear
+        self.client.force_login(self.user2)
+        response2 = self.client.get(reverse('item_detail', args=[self.lost_item.pk]))
+        self.assertNotContains(response2, 'alice@gmail.com')
+
 
 # ─── Resolve (AJAX) ───────────────────────────────────────
 
 class ResolveItemTests(BaseTestCase):
 
-    def post(self):
+    def post(self, user=None):
+        self.client.force_login(user or self.user1)
         return self.client.post(reverse('resolve_item', args=[self.lost_item.pk]), content_type='application/json')
 
     def test_owner_can_resolve(self):
-        self.client.force_login(self.user1)
         self.assertEqual(self.post().status_code, 200)
         self.lost_item.refresh_from_db()
         self.assertEqual(self.lost_item.status, ItemReport.RESOLVED)
         self.assertIsNotNone(self.lost_item.resolved_at)
 
-    def test_non_owner_cannot_resolve(self):
-        self.client.force_login(self.user2)
-        self.assertEqual(self.post().status_code, 403)
+    def test_staff_can_resolve(self):
+        staff = User.objects.create_user('admin_s', 'admin@gmail.com', 'x', is_staff=True)
+        self.assertEqual(self.post(user=staff).status_code, 200)
+        self.lost_item.refresh_from_db()
+        self.assertEqual(self.lost_item.status, ItemReport.RESOLVED)
+
+    def test_non_owner_non_staff_gets_403(self):
+        self.assertEqual(self.post(user=self.user2).status_code, 403)
         self.lost_item.refresh_from_db()
         self.assertEqual(self.lost_item.status, ItemReport.OPEN)
 
@@ -458,7 +472,6 @@ class ResolveItemTests(BaseTestCase):
 
     def test_resolve_already_resolved(self):
         self.lost_item.mark_resolved()
-        self.client.force_login(self.user1)
         self.assertEqual(self.post().status_code, 400)
 
     def test_csrf_cookie_is_set_on_pages_without_forms(self):
@@ -483,128 +496,192 @@ class ResolveItemTests(BaseTestCase):
         self.assertEqual(response.status_code, 403)
 
 
-# ─── Messages / claims ────────────────────────────────────
+# ─── Chat ─────────────────────────────────────────────────
 
-class ClaimTests(BaseTestCase):
-    MESSAGE = 'I found it near the library desk, it has a panda keychain.'
+class ChatTests(BaseTestCase):
 
-    def send(self, user=None, message=None, item=None):
-        self.client.force_login(user or self.user2)
-        return self.client.post(reverse('claim_item', args=[(item or self.lost_item).pk]),
-                                {'message': message if message is not None else self.MESSAGE})
+    def _start(self, user, item=None):
+        """POST to start_chat and follow to the new conversation."""
+        self.client.force_login(user)
+        return self.client.post(reverse('start_chat', args=[(item or self.lost_item).pk]), follow=True)
 
-    def test_claim_is_saved_and_poster_emailed(self):
-        response = self.send()
-        self.assertRedirects(response, reverse('item_detail', args=[self.lost_item.pk]))
-        claim = Claim.objects.get()
-        self.assertEqual((claim.item, claim.claimant, claim.status), (self.lost_item, self.user2, Claim.PENDING))
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, ['alice@gmail.com'])
-        self.assertIn('panda keychain', mail.outbox[0].body)
+    def _send(self, conv, user, body, ajax=False):
+        self.client.force_login(user)
+        headers = {'HTTP_X_REQUESTED_WITH': 'XMLHttpRequest'} if ajax else {}
+        return self.client.post(
+            reverse('send_message', args=[conv.pk]), {'body': body}, **headers
+        )
 
-    def test_cannot_message_yourself(self):
-        self.send(user=self.user1)
-        self.assertEqual(Claim.objects.count(), 0)
+    # ── Start ────────────────────────────────────────────────────────────
 
-    def test_cannot_message_twice(self):
-        self.send()
-        self.send()
-        self.assertEqual(Claim.objects.count(), 1)
+    def test_start_chat_creates_conversation(self):
+        self._start(self.user2)
+        self.assertTrue(Conversation.objects.filter(item=self.lost_item, participant=self.user2).exists())
 
-    def test_cannot_message_resolved_report(self):
+    def test_start_chat_redirects_to_chat_page(self):
+        response = self._start(self.user2)
+        conv = Conversation.objects.get(item=self.lost_item, participant=self.user2)
+        self.assertRedirects(response, reverse('chat_detail', args=[conv.pk]))
+
+    def test_cannot_chat_with_own_report(self):
+        self._start(self.user1)
+        self.assertFalse(Conversation.objects.filter(item=self.lost_item, participant=self.user1).exists())
+
+    def test_cannot_start_new_chat_on_resolved_report(self):
         self.lost_item.mark_resolved()
-        self.send()
-        self.assertEqual(Claim.objects.count(), 0)
+        self._start(self.user2)
+        self.assertFalse(Conversation.objects.filter(item=self.lost_item, participant=self.user2).exists())
 
-    def test_short_message_rejected(self):
-        self.send(message='hi')
-        self.assertEqual(Claim.objects.count(), 0)
-
-    def test_claim_requires_post(self):
+    def test_existing_chat_on_resolved_report_is_still_reachable(self):
+        """A chat started before resolution can still be opened after."""
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self.lost_item.mark_resolved()
         self.client.force_login(self.user2)
-        self.assertEqual(self.client.get(reverse('claim_item', args=[self.lost_item.pk])).status_code, 405)
+        response = self.client.get(reverse('chat_detail', args=[conv.pk]))
+        self.assertEqual(response.status_code, 200)
 
-    def test_email_failure_does_not_break_request(self):
-        """An unreachable SMTP server must not turn a saved message into a 500."""
-        with override_settings(EMAIL_BACKEND='django.core.mail.backends.smtp.EmailBackend',
-                               EMAIL_HOST='127.0.0.1', EMAIL_PORT=1):
-            response = self.send()
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(Claim.objects.filter(claimant=self.user2).exists())
+    def test_second_start_redirects_to_existing_conversation(self):
+        self._start(self.user2)
+        self._start(self.user2)
+        self.assertEqual(Conversation.objects.filter(item=self.lost_item, participant=self.user2).count(), 1)
 
-    def test_database_enforces_one_claim_per_user(self):
-        Claim.objects.create(item=self.lost_item, claimant=self.user2, message='x' * 12)
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            Claim.objects.create(item=self.lost_item, claimant=self.user2, message='y' * 12)
+    # ── Access control ───────────────────────────────────────────────────
 
-    def test_owner_sees_messages_with_email(self):
-        self.send()
-        self.client.force_login(self.user1)
-        response = self.client.get(reverse('item_detail', args=[self.lost_item.pk]))
-        self.assertContains(response, 'panda keychain')
-        self.assertContains(response, 'bob@gmail.com')
-        self.assertContains(response, 'Accept')
-
-    def test_claimant_sees_pending_status(self):
-        self.send()
-        response = self.client.get(reverse('item_detail', args=[self.lost_item.pk]))
-        self.assertContains(response, "You've written to")
-        self.assertContains(response, 'Pending')
-
-    def test_accept_resolves_report_and_declines_others(self):
-        self.send(user=self.user2)
-        self.send(user=self.user3)
-        mail.outbox.clear()
-        bob_claim = Claim.objects.get(claimant=self.user2)
-        self.client.force_login(self.user1)
-        response = self.client.post(reverse('accept_claim', args=[bob_claim.pk]))
-        self.assertRedirects(response, reverse('item_detail', args=[self.lost_item.pk]))
-        self.lost_item.refresh_from_db()
-        bob_claim.refresh_from_db()
-        self.assertEqual(self.lost_item.status, ItemReport.RESOLVED)
-        self.assertEqual(bob_claim.status, Claim.ACCEPTED)
-        self.assertEqual(Claim.objects.get(claimant=self.user3).status, Claim.REJECTED)
-        self.assertEqual(mail.outbox[0].to, ['bob@gmail.com'])
-
-    def test_decline_keeps_report_open(self):
-        self.send()
-        claim = Claim.objects.get()
-        self.client.force_login(self.user1)
-        self.client.post(reverse('decline_claim', args=[claim.pk]))
-        claim.refresh_from_db()
-        self.lost_item.refresh_from_db()
-        self.assertEqual(claim.status, Claim.REJECTED)
-        self.assertEqual(self.lost_item.status, ItemReport.OPEN)
-
-    def test_only_owner_can_respond(self):
-        self.send()
-        claim = Claim.objects.get()
+    def test_outsider_gets_404_on_chat_detail(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
         self.client.force_login(self.user3)
-        self.client.post(reverse('accept_claim', args=[claim.pk]))
-        claim.refresh_from_db()
-        self.assertEqual(claim.status, Claim.PENDING)
+        self.assertEqual(self.client.get(reverse('chat_detail', args=[conv.pk])).status_code, 404)
 
-    def test_respond_requires_post(self):
-        self.send()
-        claim = Claim.objects.get()
+    def test_outsider_gets_404_on_send(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self.client.force_login(self.user3)
+        response = self.client.post(reverse('send_message', args=[conv.pk]), {'body': 'hi there'})
+        self.assertEqual(response.status_code, 404)
+
+    def test_outsider_gets_404_on_poll(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self.client.force_login(self.user3)
+        self.assertEqual(self.client.get(reverse('poll_chat', args=[conv.pk])).status_code, 404)
+
+    def test_participant_can_access_chat(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self.client.force_login(self.user2)
+        self.assertEqual(self.client.get(reverse('chat_detail', args=[conv.pk])).status_code, 200)
+
+    def test_item_owner_can_access_chat(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
         self.client.force_login(self.user1)
-        self.assertEqual(self.client.get(reverse('accept_claim', args=[claim.pk])).status_code, 405)
+        self.assertEqual(self.client.get(reverse('chat_detail', args=[conv.pk])).status_code, 200)
 
-    def test_cannot_respond_twice(self):
-        self.send()
-        claim = Claim.objects.get()
+    # ── Sending messages ─────────────────────────────────────────────────
+
+    def test_send_saves_message(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self._send(conv, self.user2, 'Hello, do you still have it?')
+        self.assertEqual(conv.messages.count(), 1)
+        self.assertEqual(conv.messages.first().body, 'Hello, do you still have it?')
+
+    def test_send_ajax_returns_json(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        response = self._send(conv, self.user2, 'Hey', ajax=True)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('id', data)
+        self.assertEqual(data['body'], 'Hey')
+        self.assertTrue(data['mine'])
+
+    def test_empty_message_rejected(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self._send(conv, self.user2, '   ')
+        self.assertEqual(conv.messages.count(), 0)
+
+    def test_overlength_message_rejected(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self._send(conv, self.user2, 'x' * 1001)
+        self.assertEqual(conv.messages.count(), 0)
+
+    def test_message_on_resolved_report_rejected(self):
+        self.lost_item.mark_resolved()
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self._send(conv, self.user2, 'Still here?')
+        self.assertEqual(conv.messages.count(), 0)
+
+    # ── Poll ─────────────────────────────────────────────────────────────
+
+    def test_poll_returns_only_newer_messages(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        m1 = Message.objects.create(conversation=conv, sender=self.user2, body='First')
+        m2 = Message.objects.create(conversation=conv, sender=self.user2, body='Second')
         self.client.force_login(self.user1)
-        self.client.post(reverse('decline_claim', args=[claim.pk]))
-        self.client.post(reverse('accept_claim', args=[claim.pk]))
-        claim.refresh_from_db()
-        self.assertEqual(claim.status, Claim.REJECTED)
+        response = self.client.get(reverse('poll_chat', args=[conv.pk]), {'after': m1.pk})
+        data = response.json()
+        ids = [m['id'] for m in data['messages']]
+        self.assertIn(m2.pk, ids)
+        self.assertNotIn(m1.pk, ids)
 
-    def test_navbar_badge_counts_unanswered_messages(self):
-        self.send()
+    def test_poll_includes_closed_flag(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self.lost_item.mark_resolved()
+        self.client.force_login(self.user2)
+        data = self.client.get(reverse('poll_chat', args=[conv.pk])).json()
+        self.assertTrue(data['closed'])
+
+    # ── Unread / mark-as-read ─────────────────────────────────────────────
+
+    def test_mark_incoming_read_on_chat_open(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        msg = Message.objects.create(conversation=conv, sender=self.user2, body='unread')
+        self.assertIsNone(msg.read_at)
+        # Alice (owner) opens the chat → message should be marked read
+        self.client.force_login(self.user1)
+        self.client.get(reverse('chat_detail', args=[conv.pk]))
+        msg.refresh_from_db()
+        self.assertIsNotNone(msg.read_at)
+
+    def test_unread_count_in_context_processor(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        Message.objects.create(conversation=conv, sender=self.user2, body='hi')
         self.client.force_login(self.user1)
         response = self.client.get(reverse('dashboard'))
-        self.assertEqual(response.context['pending_claims'], 1)
-        self.assertContains(response, 'nav-badge')
+        self.assertEqual(response.context['unread_messages'], 1)
+
+    def test_unread_count_zero_after_read(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        Message.objects.create(conversation=conv, sender=self.user2, body='hi')
+        self.client.force_login(self.user1)
+        self.client.get(reverse('chat_detail', args=[conv.pk]))   # marks as read
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.context['unread_messages'], 0)
+
+    def test_own_messages_not_counted_as_unread(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        Message.objects.create(conversation=conv, sender=self.user1, body='Hi bob')
+        self.client.force_login(self.user1)
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.context['unread_messages'], 0)
+
+    # ── No emails ─────────────────────────────────────────────────────────
+
+    def test_no_email_sent_when_chat_started(self):
+        self._start(self.user2)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_no_email_sent_when_message_sent(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self._send(conv, self.user2, 'Hey there')
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_no_email_sent_when_report_resolved(self):
+        self.client.force_login(self.user1)
+        self.client.post(reverse('resolve_item', args=[self.lost_item.pk]))
+        self.assertEqual(len(mail.outbox), 0)
+
+    # ── Database integrity ────────────────────────────────────────────────
+
+    def test_database_enforces_one_conversation_per_user(self):
+        Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Conversation.objects.create(item=self.lost_item, participant=self.user2)
 
 
 # ─── Matching ─────────────────────────────────────────────
@@ -685,15 +762,9 @@ class MyReportsTests(BaseTestCase):
     def test_my_reports_requires_login(self):
         self.assertIn(self.client.get(reverse('my_reports')).status_code, [301, 302])
 
-    def test_messages_sent_tab_lists_my_claims(self):
-        Claim.objects.create(item=self.lost_item, claimant=self.user2, message='I have it, message me!')
-        self.client.force_login(self.user2)
-        response = self.client.get(reverse('my_reports'), {'tab': 'claims'})
-        self.assertEqual(response.context['tab'], 'claims')
-        self.assertContains(response, 'I have it, message me!')
-
-    def test_new_messages_chip_on_card(self):
-        Claim.objects.create(item=self.lost_item, claimant=self.user2, message='I have it, message me!')
+    def test_unread_chip_on_card(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        Message.objects.create(conversation=conv, sender=self.user2, body='I found it!')
         self.client.force_login(self.user1)
         self.assertContains(self.client.get(reverse('my_reports')), '1 new')
 
@@ -728,6 +799,11 @@ class ModelTests(BaseTestCase):
         statuses = list(ItemReport.objects.values_list('status', flat=True))
         self.assertEqual(statuses, sorted(statuses))
 
+    def test_conversation_other_user(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        self.assertEqual(conv.other_user(self.user2), self.user1)
+        self.assertEqual(conv.other_user(self.user1), self.user2)
+
 
 class UserProfileTests(BaseTestCase):
 
@@ -752,4 +828,4 @@ class SeedDemoTests(TestCase):
         self.assertEqual(ItemReport.objects.count(), first)
         call_command('seed_demo', '--reset', verbosity=0)
         self.assertEqual(ItemReport.objects.count(), first)
-        self.assertTrue(Claim.objects.exists())
+        self.assertTrue(Conversation.objects.exists())

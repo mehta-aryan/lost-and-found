@@ -1,10 +1,10 @@
 """
 items/models.py — Database Models (the "M" in MVT)
 
-  1. UserProfile – extends Django's User with a profile picture
-  2. ItemReport  – a lost / found item report
-  3. Claim       – a message from one student to the poster of a report
-                   ("I found this" / "This is mine")
+  1. UserProfile  – extends Django's User with a profile picture
+  2. ItemReport   – a lost / found item report
+  3. Conversation – private chat thread between report poster and one visitor
+  4. Message      – a single chat message within a Conversation
 """
 from urllib.parse import quote
 
@@ -104,22 +104,47 @@ class ItemReport(models.Model):
         self.save(update_fields=['status', 'resolved_at'])
 
 
-class Claim(models.Model):
-    """A message to the poster: "I found this" (on a LOST report) or "this is mine" (on FOUND)."""
-    PENDING, ACCEPTED, REJECTED = 'PENDING', 'ACCEPTED', 'REJECTED'
-    STATUS_CHOICES = [(PENDING, 'Pending'), (ACCEPTED, 'Accepted'), (REJECTED, 'Declined')]
-
-    item = models.ForeignKey(ItemReport, on_delete=models.CASCADE, related_name='claims')
-    claimant = models.ForeignKey(User, on_delete=models.CASCADE, related_name='claims')
-    message = models.TextField()
-    status = models.CharField(max_length=8, choices=STATUS_CHOICES, default=PENDING)
+class Conversation(models.Model):
+    """
+    A private chat thread between the report's poster and one visitor.
+    The visitor is stored as `participant`; the other side is always item.posted_by.
+    A user cannot be participant of their own report (enforced in the view).
+    """
+    item = models.ForeignKey(ItemReport, on_delete=models.CASCADE, related_name='conversations')
+    participant = models.ForeignKey(User, on_delete=models.CASCADE, related_name='conversations')
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['-updated_at']
         constraints = [
-            models.UniqueConstraint(fields=['item', 'claimant'], name='one_claim_per_user_per_item'),
+            models.UniqueConstraint(fields=['item', 'participant'], name='one_conversation_per_user_per_item'),
         ]
 
     def __str__(self):
-        return f"Claim by {self.claimant} on #{self.item_id} ({self.status})"
+        return f"Chat: {self.participant} ↔ {self.item.posted_by} re #{self.item_id}"
+
+    def touch(self):
+        """Bump updated_at so inbox sorts by last activity."""
+        self.updated_at = timezone.now()
+        self.save(update_fields=['updated_at'])
+
+    def other_user(self, me):
+        """Return the user on the other side of this conversation."""
+        return self.item.posted_by if me == self.participant else self.participant
+
+
+class Message(models.Model):
+    """A single chat message."""
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [models.Index(fields=['conversation', 'created_at'])]
+
+    def __str__(self):
+        return f"Msg #{self.pk} by {self.sender} in conv #{self.conversation_id}"

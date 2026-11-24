@@ -10,18 +10,17 @@ from datetime import date
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.mail import send_mail
+from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Max, OuterRef, Q, Subquery
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .forms import ClaimForm, ItemReportForm
+from .forms import ItemReportForm, MessageForm
 from .matching import find_matches
-from .models import Claim, ItemReport
+from .models import Conversation, ItemReport, Message
 
 
 # ── Helpers ───────────────────────────────────────────────
@@ -30,10 +29,22 @@ def _display_name(user):
     return user.get_full_name() or user.username
 
 
-def _email(user, subject, body):
-    """Best-effort notification; a mail failure must never break the request."""
-    if user.email:
-        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=True)
+def _conversation_or_404(request, pk):
+    """Return the conversation if request.user is a participant or the item owner, else 404."""
+    conv = get_object_or_404(
+        Conversation.objects.select_related('item', 'item__posted_by', 'participant'),
+        pk=pk,
+    )
+    me = request.user
+    if me != conv.participant and me != conv.item.posted_by:
+        from django.http import Http404
+        raise Http404
+    return conv
+
+
+def _mark_incoming_read(conv, me):
+    """Mark messages from the other person as read."""
+    conv.messages.filter(read_at__isnull=True).exclude(sender=me).update(read_at=timezone.now())
 
 
 # ── Public ────────────────────────────────────────────────
@@ -112,17 +123,39 @@ def dashboard(request):
 def item_detail(request, pk):
     item = get_object_or_404(ItemReport.objects.select_related('posted_by'), pk=pk)
     is_owner = item.posted_by_id == request.user.id
+    can_resolve = is_owner or request.user.is_staff
 
     ctx = {
         'item': item,
         'is_owner': is_owner,
+        'can_resolve': can_resolve,
         'matches': find_matches(item) if item.is_open else [],
     }
     if is_owner:
-        ctx['claims'] = item.claims.select_related('claimant')
+        # Show all conversations for this report (with unread count per conversation)
+        convs = (
+            item.conversations
+            .select_related('participant')
+            .annotate(
+                unread=Count(
+                    'messages',
+                    filter=Q(messages__read_at__isnull=True, messages__sender=item.posted_by) == False
+                )
+            )
+        )
+        # Simpler: just annotate unread messages from participant
+        convs = item.conversations.select_related('participant').prefetch_related('messages')
+        conv_data = []
+        for conv in convs:
+            msgs = list(conv.messages.all())
+            last = msgs[-1] if msgs else None
+            unread = sum(1 for m in msgs if m.read_at is None and m.sender != request.user)
+            conv_data.append({'conv': conv, 'last': last, 'unread': unread})
+        ctx['conv_data'] = conv_data
     else:
-        ctx['my_claim'] = item.claims.filter(claimant=request.user).first()
-        ctx['claim_form'] = ClaimForm()
+        # Check if visitor already has a conversation for this report
+        ctx['my_conv'] = item.conversations.filter(participant=request.user).first()
+
     return render(request, 'items/item_detail.html', ctx)
 
 
@@ -186,12 +219,12 @@ def delete_item(request, pk):
 
 @login_required
 def resolve_item(request, pk):
-    """AJAX: mark a report resolved. Owner only. Returns JSON."""
+    """AJAX: mark a report resolved. Owner or staff only. Returns JSON."""
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
 
     item = get_object_or_404(ItemReport, pk=pk)
-    if item.posted_by != request.user:
+    if item.posted_by != request.user and not request.user.is_staff:
         return JsonResponse({'error': 'Only the owner can resolve this report.'}, status=403)
     if item.status == ItemReport.RESOLVED:
         return JsonResponse({'error': 'This report is already resolved.'}, status=400)
@@ -200,99 +233,200 @@ def resolve_item(request, pk):
     return JsonResponse({'success': True, 'new_status': 'Resolved'})
 
 
-# ── Claims ("I found this" / "This is mine") ──────────────
+# ── Chat: start conversation ──────────────────────────────
 
 @login_required
 @require_POST
-def claim_item(request, pk):
+def start_chat(request, pk):
+    """
+    POST item/<pk>/chat/ → get_or_create Conversation for request.user, redirect to it.
+    Rejects: own report, and NEW chats on resolved reports.
+    """
     item = get_object_or_404(ItemReport.objects.select_related('posted_by'), pk=pk)
 
     if item.posted_by == request.user:
-        messages.error(request, "You can't send a message to yourself.")
+        messages.error(request, "You can't chat about your own report.")
         return redirect('item_detail', pk=pk)
+
+    # Existing chats can always be re-opened; only block CREATING a new one on resolved
+    existing = item.conversations.filter(participant=request.user).first()
+    if existing:
+        return redirect('chat_detail', pk=existing.pk)
+
     if not item.is_open:
-        messages.error(request, 'This report is already resolved.')
-        return redirect('item_detail', pk=pk)
-    if item.claims.filter(claimant=request.user).exists():
-        messages.info(request, 'You have already sent a message about this report.')
+        messages.info(request, 'This report is resolved. New chats cannot be started.')
         return redirect('item_detail', pk=pk)
 
-    form = ClaimForm(request.POST)
-    if not form.is_valid():
-        for error in form.errors.get('message', []):
-            messages.error(request, error)
-        return redirect('item_detail', pk=pk)
+    conv = Conversation.objects.create(item=item, participant=request.user)
+    return redirect('chat_detail', pk=conv.pk)
 
-    claim = form.save(commit=False)
-    claim.item, claim.claimant = item, request.user
-    claim.save()
 
-    link = request.build_absolute_uri(reverse('item_detail', args=[item.pk]))
-    _email(
-        item.posted_by,
-        f'New message about "{item.title}"',
-        f'{_display_name(request.user)} ({request.user.email}) wrote about your '
-        f'{item.get_report_type_display().lower()} report "{item.title}":\n\n'
-        f'{claim.message}\n\nReply or respond here: {link}\n',
+# ── Chat: inbox ───────────────────────────────────────────
+
+@login_required
+def inbox(request):
+    """
+    My conversations — as participant OR as report owner — newest activity first.
+    Shows report title/type, the other person's name, last-message preview,
+    time, and unread count.
+    """
+    me = request.user
+
+    # All conversations where I am involved
+    convs = (
+        Conversation.objects
+        .filter(Q(participant=me) | Q(item__posted_by=me))
+        .select_related('item', 'item__posted_by', 'participant')
+        .order_by('-updated_at')
     )
-    messages.success(request, f'Message sent to {_display_name(item.posted_by)}.')
-    return redirect('item_detail', pk=pk)
 
+    inbox_data = []
+    for conv in convs:
+        msgs = list(conv.messages.order_by('created_at'))
+        last = msgs[-1] if msgs else None
+        other = conv.other_user(me)
+        unread = sum(1 for m in msgs if m.read_at is None and m.sender != me)
+        inbox_data.append({
+            'conv': conv,
+            'other': other,
+            'last': last,
+            'unread': unread,
+        })
+
+    return render(request, 'items/inbox.html', {'inbox_data': inbox_data})
+
+
+# ── Chat: detail (read) ───────────────────────────────────
+
+@login_required
+def chat_detail(request, pk):
+    conv = _conversation_or_404(request, pk)
+    _mark_incoming_read(conv, request.user)
+
+    other = conv.other_user(request.user)
+    msgs = list(conv.messages.select_related('sender').all())
+    form = MessageForm()
+
+    return render(request, 'items/chat.html', {
+        'conv': conv,
+        'other': other,
+        'msgs': msgs,
+        'form': form,
+        'closed': not conv.item.is_open,
+    })
+
+
+# ── Chat: send message ────────────────────────────────────
 
 @login_required
 @require_POST
-def respond_claim(request, pk, action):
-    """Owner accepts or declines a message. Accepting resolves the report."""
-    claim = get_object_or_404(Claim.objects.select_related('item', 'claimant'), pk=pk)
-    item = claim.item
+def send_message(request, pk):
+    """
+    POST chat/<pk>/send/ → save message, return JSON (or redirect if no JS).
+    Throttled: max 30 messages/minute per user via Django cache.
+    """
+    conv = _conversation_or_404(request, pk)
 
-    if item.posted_by != request.user:
-        messages.error(request, 'Only the person who posted this report can respond.')
-        return redirect('dashboard')
-    if claim.status != Claim.PENDING:
-        messages.info(request, 'You have already responded to that message.')
-        return redirect('item_detail', pk=item.pk)
+    if not conv.item.is_open:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'error': 'This report is resolved. Chat is closed.'}, status=403)
+        messages.error(request, 'This report is resolved. Chat is closed.')
+        return redirect('chat_detail', pk=conv.pk)
 
-    link = request.build_absolute_uri(reverse('item_detail', args=[item.pk]))
-    if action == 'accept':
-        with transaction.atomic():
-            claim.status = Claim.ACCEPTED
-            claim.save(update_fields=['status'])
-            item.claims.filter(status=Claim.PENDING).exclude(pk=claim.pk).update(status=Claim.REJECTED)
-            if item.is_open:
-                item.mark_resolved()
-        _email(
-            claim.claimant,
-            f'Your message about "{item.title}" was accepted',
-            f'{_display_name(request.user)} accepted your message. You can reach them at '
-            f'{request.user.email}.\n\n{link}\n',
-        )
-        messages.success(request, f'Accepted. The report is now resolved — you can reach {_display_name(claim.claimant)} at {claim.claimant.email}.')
-    else:
-        claim.status = Claim.REJECTED
-        claim.save(update_fields=['status'])
-        _email(
-            claim.claimant,
-            f'Update on "{item.title}"',
-            f'{_display_name(request.user)} declined your message about "{item.title}".\n\n{link}\n',
-        )
-        messages.success(request, 'Message declined.')
-    return redirect('item_detail', pk=item.pk)
+    # Simple per-user rate limit: 30 messages per minute
+    rate_key = f'chat_rate_{request.user.pk}'
+    count = cache.get(rate_key, 0)
+    if count >= 30:
+        err = 'You are sending messages too quickly. Please wait a moment.'
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'error': err}, status=429)
+        messages.error(request, err)
+        return redirect('chat_detail', pk=conv.pk)
+    cache.set(rate_key, count + 1, timeout=60)
+
+    form = MessageForm(request.POST)
+    if not form.is_valid():
+        errors = '; '.join(e for field_errs in form.errors.values() for e in field_errs)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'error': errors}, status=400)
+        for field_errs in form.errors.values():
+            for e in field_errs:
+                messages.error(request, e)
+        return redirect('chat_detail', pk=conv.pk)
+
+    msg = Message.objects.create(
+        conversation=conv,
+        sender=request.user,
+        body=form.cleaned_data['body'],
+    )
+    conv.touch()
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        other = conv.other_user(request.user)
+        return JsonResponse({
+            'id': msg.pk,
+            'body': msg.body,
+            'sender_id': msg.sender_id,
+            'sender_name': _display_name(msg.sender),
+            'ts': msg.created_at.isoformat(),
+            'mine': True,
+        })
+
+    return redirect('chat_detail', pk=conv.pk)
+
+
+# ── Chat: poll for new messages ───────────────────────────
+
+@login_required
+def poll_chat(request, pk):
+    """
+    GET chat/<pk>/poll/?after=<last_message_id>
+    Returns JSON with messages newer than `after` and a `closed` flag.
+    Marks incoming messages as read.
+    """
+    conv = _conversation_or_404(request, pk)
+
+    try:
+        after_id = int(request.GET.get('after', 0))
+    except (TypeError, ValueError):
+        after_id = 0
+
+    new_msgs = conv.messages.filter(pk__gt=after_id).select_related('sender')
+    # Mark the other person's messages as read
+    new_msgs.exclude(sender=request.user).filter(read_at__isnull=True).update(read_at=timezone.now())
+
+    data = []
+    for m in new_msgs:
+        data.append({
+            'id': m.pk,
+            'body': m.body,
+            'sender_id': m.sender_id,
+            'sender_name': _display_name(m.sender),
+            'ts': m.created_at.isoformat(),
+            'mine': m.sender_id == request.user.id,
+        })
+
+    return JsonResponse({'messages': data, 'closed': not conv.item.is_open})
 
 
 # ── My Reports ────────────────────────────────────────────
 
 @login_required
 def my_reports(request):
+    # Annotate each item with its unread message count (messages FROM others in its conversations)
+    me = request.user
+    unread_sub = (
+        Message.objects
+        .filter(conversation__item=OuterRef('pk'), read_at__isnull=True)
+        .exclude(sender=me)
+        .values('conversation__item')
+        .annotate(n=Count('pk'))
+        .values('n')
+    )
     items = (
         ItemReport.objects
-        .filter(posted_by=request.user)
+        .filter(posted_by=me)
         .select_related('posted_by')
-        .annotate(pending_claims=Count('claims', filter=Q(claims__status=Claim.PENDING)))
+        .annotate(unread_messages=Subquery(unread_sub[:1]))
     )
-    claims = Claim.objects.filter(claimant=request.user).select_related('item', 'item__posted_by')
-    return render(request, 'items/my_reports.html', {
-        'items': items,
-        'claims': claims,
-        'tab': 'claims' if request.GET.get('tab') == 'claims' else 'reports',
-    })
+    return render(request, 'items/my_reports.html', {'items': items})

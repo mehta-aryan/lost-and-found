@@ -2,14 +2,14 @@
 items/forms.py — Django forms.
 
 ItemReportForm  – create / edit a report (validates date, image type + size)
-ClaimForm       – the message a student sends to the poster
+MessageForm     – a single chat message (stripped, 1–1000 chars)
 """
 from datetime import date as _date
 
 from django import forms
 from django.conf import settings
 
-from .models import Claim, ItemReport
+from .models import ItemReport
 
 
 class ItemReportForm(forms.ModelForm):
@@ -83,8 +83,6 @@ class ItemReportForm(forms.ModelForm):
         if image and hasattr(image, 'content_type'):
             allowed = getattr(settings, 'ALLOWED_IMAGE_TYPES', ['image/jpeg', 'image/png', 'image/webp'])
             max_mb = getattr(settings, 'MAX_UPLOAD_SIZE_MB', 5)
-            # Django's ImageField sets content_type from Pillow's own detection,
-            # not from the browser, so this check can't be spoofed by renaming a file.
             if image.content_type not in allowed:
                 raise forms.ValidationError('Only JPEG, PNG, and WebP images are allowed.')
             if image.size > max_mb * 1024 * 1024:
@@ -100,17 +98,24 @@ class ItemReportForm(forms.ModelForm):
         return item
 
 
-class ClaimForm(forms.ModelForm):
-    class Meta:
-        model = Claim
-        fields = ['message']
-        labels = {'message': 'Your message'}
-        widgets = {
-            'message': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'maxlength': '1000'}),
-        }
+class MessageForm(forms.Form):
+    body = forms.CharField(
+        max_length=1000,
+        min_length=1,
+        strip=True,
+        widget=forms.Textarea(attrs={
+            'class': 'form-control',
+            'rows': 3,
+            'placeholder': 'Type a message… (Enter to send, Shift+Enter for newline)',
+            'maxlength': '1000',
+            'id': 'msgBody',
+        }),
+        error_messages={
+            'required': 'Message cannot be empty.',
+            'max_length': 'Message must be 1000 characters or fewer.',
+            'min_length': 'Message cannot be empty.',
+        },
+    )
 
-    def clean_message(self):
-        message = (self.cleaned_data.get('message') or '').strip()
-        if len(message) < 10:
-            raise forms.ValidationError('Please write at least 10 characters so the poster has something to go on.')
-        return message
+    def clean_body(self):
+        return (self.cleaned_data.get('body') or '').strip()

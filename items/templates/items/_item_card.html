@@ -27,8 +27,8 @@
     <div class="tag-stub">
       <span class="poster"><span class="avatar-sm" aria-hidden="true">{{ poster|first }}</span><span>{{ poster }}</span></span>
       {% if item.posted_by_id == user.id %}
-        {% if item.pending_claims %}
-        <span class="chip chip-claim" title="Unanswered messages">{{ item.pending_claims }} new</span>
+        {% if item.unread_messages %}
+        <span class="chip chip-claim" title="Unread messages">{{ item.unread_messages }} new</span>
         {% elif item.status == 'OPEN' %}
         <button type="button" class="btn btn-sm btn-outline-success resolve-btn"
                 data-item-id="{{ item.pk }}" data-url="{% url 'resolve_item' item.pk %}">

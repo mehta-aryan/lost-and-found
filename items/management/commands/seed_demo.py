@@ -1,5 +1,5 @@
 """
-python manage.py seed_demo           # add demo users, reports and messages
+python manage.py seed_demo           # add demo users, reports and conversations
 python manage.py seed_demo --reset   # remove the demo data first
 
 Demo users use the prefix "demo_" and cannot log in (no password). Sign in
@@ -12,7 +12,7 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from items.models import Claim, ItemReport
+from items.models import Conversation, ItemReport, Message
 
 L, F = ItemReport.LOST, ItemReport.FOUND
 
@@ -40,7 +40,7 @@ PEOPLE = [
 
 
 class Command(BaseCommand):
-    help = 'Create demo users, lost/found reports and messages so the UI has something to show.'
+    help = 'Create demo users, lost/found reports and conversations so the UI has something to show.'
 
     def add_arguments(self, parser):
         parser.add_argument('--reset', action='store_true', help='Delete existing demo data first.')
@@ -75,11 +75,23 @@ class Command(BaseCommand):
             made += created
             items.append(item)
 
-        # A couple of messages so the claim flow has something to show
-        Claim.objects.get_or_create(item=items[1], claimant=users[0], defaults={
-            'message': 'That sounds like mine! It has a panda keychain on the front zip and a Dell laptop inside.'})
-        Claim.objects.get_or_create(item=items[3], claimant=users[2], defaults={
-            'message': 'I think this is my phone. The lock screen is a golden retriever called Bruno.'})
+        # Sample conversations so the chat UI has something to show
+        def seed_conv(item, participant, msgs):
+            conv, _ = Conversation.objects.get_or_create(item=item, participant=participant)
+            for sender, body in msgs:
+                if not conv.messages.filter(sender=sender, body=body).exists():
+                    Message.objects.create(conversation=conv, sender=sender, body=body)
+            conv.touch()
+
+        seed_conv(items[1], users[0], [
+            (users[0], 'That sounds like mine! It has a panda keychain on the front zip and a Dell laptop inside.'),
+            (users[1], 'That matches — there is a panda keychain and a Dell sticker on the lid. Where can we meet?'),
+            (users[0], 'I can be at the library lobby tomorrow at 11 am.'),
+        ])
+        seed_conv(items[3], users[2], [
+            (users[2], 'I think this is my phone. The lock screen shows a golden retriever called Bruno.'),
+            (users[3], 'Yes! That is exactly the lock screen. DM me to arrange handover.'),
+        ])
 
         self.stdout.write(self.style.SUCCESS(
             f'Done: {len(users)} demo users, {made} new reports. '

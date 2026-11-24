@@ -2,8 +2,9 @@
 items/context_processors.py — values available in every template.
 """
 from django.conf import settings
+from django.db.models import Q
 
-from .models import Claim
+from .models import Message
 
 
 def site_context(request):
@@ -13,9 +14,11 @@ def site_context(request):
     }
     user = getattr(request, 'user', None)
     if user is not None and user.is_authenticated:
-        ctx['pending_claims'] = Claim.objects.filter(
-            item__posted_by=user, status=Claim.PENDING, item__status='OPEN',
-        ).count()
+        # Unread messages sent by the other person in conversations I belong to
+        ctx['unread_messages'] = Message.objects.filter(
+            Q(conversation__participant=user) | Q(conversation__item__posted_by=user),
+            read_at__isnull=True,
+        ).exclude(sender=user).count()
         try:
             ctx['nav_avatar'] = user.profile.get_profile_picture_url()
         except Exception:        # profile missing (e.g. user created before signals)

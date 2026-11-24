@@ -4,7 +4,7 @@ items/admin.py — Django admin registration.
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import Claim, ItemReport, UserProfile
+from .models import Conversation, ItemReport, Message, UserProfile
 
 
 @admin.register(UserProfile)
@@ -29,8 +29,25 @@ class ItemReportAdmin(admin.ModelAdmin):
         self.message_user(request, f'{updated} report(s) marked as resolved.')
 
 
-@admin.register(Claim)
-class ClaimAdmin(admin.ModelAdmin):
-    list_display = ('item', 'claimant', 'status', 'created_at')
-    list_filter = ('status',)
-    search_fields = ('item__title', 'claimant__username', 'claimant__email', 'message')
+class MessageInline(admin.TabularInline):
+    model = Message
+    extra = 0
+    readonly_fields = ('sender', 'body', 'created_at', 'read_at')
+    can_delete = False
+
+
+@admin.register(Conversation)
+class ConversationAdmin(admin.ModelAdmin):
+    list_display = ('item', 'participant', 'created_at', 'updated_at')
+    list_filter = ('item__report_type', 'item__status')
+    search_fields = ('item__title', 'participant__username')
+    readonly_fields = ('created_at', 'updated_at')
+    inlines = [MessageInline]
+
+
+@admin.register(Message)
+class MessageAdmin(admin.ModelAdmin):
+    list_display = ('conversation', 'sender', 'created_at', 'read_at')
+    list_filter = ('read_at',)
+    search_fields = ('body', 'sender__username')
+    readonly_fields = ('created_at',)

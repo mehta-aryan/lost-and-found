@@ -56,8 +56,11 @@
             <a class="nav-link {% if current == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}">Browse</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link {% if current == 'my_reports' %}active{% endif %}" href="{% url 'my_reports' %}">
-              My reports{% if pending_claims %}<span class="nav-badge" title="Unanswered messages">{{ pending_claims }}</span>{% endif %}
+            <a class="nav-link {% if current == 'my_reports' %}active{% endif %}" href="{% url 'my_reports' %}">My reports</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if current == 'inbox' %}active{% endif %}" href="{% url 'inbox' %}">
+              Messages{% if unread_messages %}<span class="nav-badge" title="Unread messages">{{ unread_messages }}</span>{% endif %}
             </a>
           </li>
         </ul>

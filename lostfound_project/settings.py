@@ -158,18 +158,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 MESSAGE_TAGS = {message_constants.ERROR: 'danger'}
 
 # ──────────────────────────────────────────────
-# EMAIL (claim notifications)
-# Prints emails to the console by default. For real email set
-# DJANGO_EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-# plus EMAIL_HOST / EMAIL_HOST_USER / EMAIL_HOST_PASSWORD.
+# EMAIL — not used by the app (chat is in-app only)
+# Keep a dummy backend so Django's check framework stays happy.
 # ──────────────────────────────────────────────
-EMAIL_BACKEND = os.environ.get('DJANGO_EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'localhost')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', default=True)
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Campus Lost & Found <noreply@localhost>')
+EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'
 
 # ──────────────────────────────────────────────
 # DJANGO-ALLAUTH
@@ -190,6 +182,11 @@ SOCIALACCOUNT_LOGIN_ON_GET = True              # skip the intermediate "Continue
 # Local sign-up is closed: accounts are only created via Google + domain check.
 ACCOUNT_ADAPTER = 'items.adapter.NoLocalSignupAdapter'
 SOCIALACCOUNT_ADAPTER = 'items.adapter.CollegeEmailAdapter'
+
+# If a Google login's verified email matches an existing user (e.g. the superuser),
+# connect to that account instead of erroring.
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
 
 LOGIN_URL = 'login'                            # our landing page, not straight to Google
 LOGIN_REDIRECT_URL = '/'
@@ -218,3 +215,20 @@ SOCIALACCOUNT_PROVIDERS = {'google': _google}
 MAX_UPLOAD_SIZE_MB = 5
 ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 ITEMS_PER_PAGE = 9
+
+
+def _check_college_domain(app_configs, **kwargs):
+    """Warn in production when ALLOWED_EMAIL_DOMAIN is unset or still set to gmail.com."""
+    from django.core.checks import Warning
+    domain = (ALLOWED_EMAIL_DOMAIN or '').lower()
+    if not DEBUG and (not domain or domain == 'gmail.com'):
+        return [Warning(
+            'ALLOWED_EMAIL_DOMAIN is not set to a college domain.',
+            hint='Set DJANGO_ALLOWED_EMAIL_DOMAIN=yourcollege.edu in your environment.',
+            id='lostfound.W001',
+        )]
+    return []
+
+
+from django.core.checks import register as _register_check
+_register_check(_check_college_domain)

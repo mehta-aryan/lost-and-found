@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load items_extras %}
+
+{% block title %}Messages — Campus Lost & Found{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4 pt-2">
+  <h1 class="display-title mb-0" style="font-size: clamp(1.8rem, 1.2rem + 2vw, 2.5rem);">Messages</h1>
+</div>
+
+{% if inbox_data %}
+<div class="claim-list">
+  {% for row in inbox_data %}
+  {% with other_name=row.other.get_full_name|default:row.other.username %}
+  <article class="claim">
+    <span class="avatar-sm" aria-hidden="true">{{ other_name|first }}</span>
+    <div style="min-width:0">
+      <div class="claim-head">
+        <a href="{% url 'chat_detail' row.conv.pk %}"><strong>{{ row.conv.item.title }}</strong></a>
+        <span class="chip chip-{{ row.conv.item.report_type|lower }}">{{ row.conv.item.get_report_type_display }}</span>
+        {% if row.unread %}<span class="chip chip-claim">{{ row.unread }} new</span>{% endif %}
+        {% if row.conv.item.status == 'RESOLVED' %}<span class="chip chip-resolved">Resolved</span>{% endif %}
+        <span class="when">{% if row.last %}{{ row.last.created_at|ago }}{% endif %}</span>
+      </div>
+      <p class="text-muted small mb-1">
+        <span class="fw-semibold">{{ other_name }}</span>
+        {% if row.last %} · {{ row.last.body|truncatechars:100 }}{% endif %}
+      </p>
+      <a href="{% url 'chat_detail' row.conv.pk %}" class="btn btn-sm btn-outline-primary">Open chat</a>
+    </div>
+  </article>
+  {% endwith %}
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">
+  <i class="bi bi-chat-dots" aria-hidden="true"></i>
+  <h3>No messages yet</h3>
+  <p>When you message someone about a report, the conversation appears here.</p>
+  <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">Browse reports</a>
+</div>
+{% endif %}
+{% endblock %}

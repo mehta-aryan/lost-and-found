@@ -10,15 +10,15 @@ Reports look like **claim tickets** (punched hole, perforated stub). Lost is red
 
 - **Google sign-in, college accounts only.** Verified email + domain check; local sign-up is closed so it can't be bypassed
 - **Dashboard** with Lost / Found tabs, search (name, place, description), category and status filters, pagination
-- **Messages between students.** "I found this" on a lost report, "This is mine" on a found one. The poster gets an email, then accepts or declines. Accepting resolves the report
+- **Private in-app chat.** "I found this" on a lost report, "This is mine" on a found one. Conversations stay private between the poster and each visitor — no emails are sent or exposed
 - **Possible matches** shown on every open report (opposite type, same category, within 14 days, shared words)
 - **Report CRUD** with categories, photo upload (drag & drop, preview, type/size checks), and automatic clean-up of old photos
-- **AJAX "Mark resolved"** with CSRF protection and a confirm dialog
-- **My reports** page: your posts (with unread-message badge) and the messages you sent
+- **AJAX "Mark resolved"** with CSRF protection and a confirm dialog (allowed for the poster or staff); resolving locks existing chats to read-only
+- **My reports & Messages inbox** with unread-message badges
 - **Light / dark theme**, responsive layout, keyboard-accessible, respects reduced-motion
-- **Admin**: filters, inline status edit, bulk "mark resolved"
+- **Admin**: filters, inline status edit, bulk "mark resolved", conversation & message inspection
 - **`seed_demo`** command to fill the app with sample data
-- **97 automated tests**
+- **Automated test suite** covering auth, CRUD, chat, permissions, and matching
 
 ---
 
@@ -26,18 +26,18 @@ Reports look like **claim tickets** (punched hole, perforated stub). Lost is red
 
 | Layer | File(s) | Purpose |
 |---|---|---|
-| **Model** | `items/models.py` | `UserProfile`, `ItemReport` (with categories), `Claim` |
-| **View** | `items/views.py` | Dashboard, detail, CRUD, resolve (AJAX), claim + respond |
-| **Template** | `templates/base.html`, `items/templates/items/` | Django Template Language; `_item_card`, `_item_form`, `_field`, `_pagination` are reusable partials |
+| **Model** | `items/models.py` | `UserProfile`, `ItemReport` (with categories), `Conversation`, `Message` |
+| **View** | `items/views.py` | Dashboard, detail, CRUD, resolve (AJAX), inbox & chat (`start_chat`, `chat_detail`, `send_message`, `poll_chat`) |
+| **Template** | `templates/base.html`, `items/templates/items/` | Django Template Language; `inbox.html`, `chat.html`, `_item_card`, `_item_form`, `_field`, `_pagination` |
 | URLs | `lostfound_project/urls.py`, `items/urls.py` | URL → view mapping |
-| Forms | `items/forms.py` | `ItemReportForm` (validation), `ClaimForm` |
+| Forms | `items/forms.py` | `ItemReportForm` (validation), `MessageForm` |
 | Auth adapters | `items/adapter.py` | Domain restriction + closed local sign-up |
 | Matching | `items/matching.py` | "Possible matches" scoring |
 | Signals | `items/signals.py` | Auto-create profile; delete orphaned photos |
 | Context processor | `items/context_processors.py` | Unread-message count, avatar, upload limit in every template |
 | Template tags | `items/templatetags/items_extras.py` | Pagination URLs that keep filters, short "ago" format |
-| Admin | `items/admin.py` | Admin configuration |
-| Static | `static/css/style.css`, `static/js/main.js` | Design system, theme, toasts, AJAX, photo picker |
+| Admin | `items/admin.py` | Admin configuration (including `Conversation` + read-only `Message` inline) |
+| Static | `static/css/style.css`, `static/js/main.js`, `static/js/chat.js` | Design system, theme, toasts, AJAX, photo picker, chat polling |
 
 ---
 
@@ -52,7 +52,7 @@ copy .env.example .env         # macOS/Linux: cp .env.example .env   — then ed
 
 python manage.py migrate
 python manage.py createsuperuser
-python manage.py seed_demo     # optional: sample reports and messages
+python manage.py seed_demo     # optional: sample reports and conversations
 python manage.py runserver
 ```
 
@@ -74,9 +74,14 @@ Open http://127.0.0.1:8000
 
 ---
 
-## ✉️ Email notifications
+## 💬 How chat works
 
-By default emails are printed in the terminal running `runserver`, which is fine for a demo. For real email set `DJANGO_EMAIL_BACKEND` and the `EMAIL_*` values (see `.env.example`). A mail failure never breaks the page.
+- On any open report, another student can click **I found this** / **This is mine** to open a private 1-on-1 `Conversation` with the poster.
+- Only the poster and that visitor can view, send, or poll messages in the conversation (everyone else gets 404).
+- New messages are fetched automatically every ~4 seconds while the tab is visible (`chat.js`), and opening or polling marks incoming messages as read.
+- Sending is rate-limited to 30 messages/minute per user via Django's cache.
+- When the poster (or staff) marks the report **Resolved**, existing chats remain readable as read-only history and no new chats or messages can be sent.
+- No emails are sent anywhere in the app, and no user's email address is ever shown to another user.
 
 ---
 
@@ -86,17 +91,17 @@ By default emails are printed in the terminal running `runserver`, which is fine
 python manage.py test items -v2
 ```
 
-Covers: sign-in rules (domain, unverified email, look-alike domains, closed sign-up, landing redirect), dashboard filters and pagination, search, create/edit/delete and ownership, image validation and file clean-up, AJAX resolve incl. CSRF, the message → accept/decline flow, matching rules, My reports, models, profile signal, template filters and `seed_demo`.
+Covers: sign-in rules (domain, unverified email, look-alike domains, closed sign-up, landing redirect), dashboard filters and pagination, search, create/edit/delete and ownership, image validation and file clean-up, AJAX resolve (owner + staff + CSRF), private chat (start, send, poll, unread counts, read-only on resolve, 404 for outsiders, no emails sent/exposed), matching rules, My reports, models, profile signal, template filters and `seed_demo`.
 
 ---
 
 ## 🛡️ Security notes
 
 - Secrets and `DEBUG` come from environment variables; the app refuses to start with `DJANGO_DEBUG=0` and no secret key.
-- Every write is checked on the server for ownership (hiding buttons is not relied on).
+- Every write and chat access is checked on the server for ownership/participation (hiding buttons is not relied on).
 - Uploads must be real JPEG/PNG/WebP images (checked with Pillow, not the file name) and under 5 MB.
 - All state-changing views are POST + CSRF protected.
-- When deploying: set `DJANGO_DEBUG=0`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_HTTPS=1`, run `collectstatic`, and serve static/media with your web server (or WhiteNoise).
+- When deploying: set `DJANGO_DEBUG=0`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_HTTPS=1`, `DJANGO_ALLOWED_EMAIL_DOMAIN`, run `collectstatic`, and serve static/media with your web server (or WhiteNoise).
 
 ---
 

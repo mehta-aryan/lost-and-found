@@ -12,8 +12,10 @@ urlpatterns = [
     path('item/<int:pk>/edit/', views.edit_item, name='edit_item'),
     path('item/<int:pk>/delete/', views.delete_item, name='delete_item'),
     path('item/<int:pk>/resolve/', views.resolve_item, name='resolve_item'),   # AJAX
-    path('item/<int:pk>/claim/', views.claim_item, name='claim_item'),
-    path('claim/<int:pk>/accept/', views.respond_claim, {'action': 'accept'}, name='accept_claim'),
-    path('claim/<int:pk>/decline/', views.respond_claim, {'action': 'decline'}, name='decline_claim'),
+    path('item/<int:pk>/chat/', views.start_chat, name='start_chat'),
+    path('messages/', views.inbox, name='inbox'),
+    path('chat/<int:pk>/', views.chat_detail, name='chat_detail'),
+    path('chat/<int:pk>/send/', views.send_message, name='send_message'),
+    path('chat/<int:pk>/poll/', views.poll_chat, name='poll_chat'),
     path('my-reports/', views.my_reports, name='my_reports'),
 ]
