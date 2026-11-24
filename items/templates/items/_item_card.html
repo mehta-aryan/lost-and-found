@@ -1,58 +1,42 @@
-{% load static %}
-{# Reusable card partial — included from dashboard.html and my_reports.html #}
+{# Ticket-style card — included from dashboard, my_reports and the "possible matches" row. Expects `item`. #}
+{% with poster=item.posted_by.get_full_name|default:item.posted_by.username %}
 <div class="col">
-  <div class="card h-100 shadow-sm item-card {% if item.status == 'RESOLVED' %}card-resolved{% endif %}">
-    {# ── Card image or placeholder ── #}
-    {% if item.image %}
-    <img src="{{ item.image.url }}" class="card-img-top" alt="{{ item.title }}"
-         style="height:180px; object-fit:cover;">
-    {% else %}
-    <div class="card-img-top d-flex align-items-center justify-content-center
-                {% if item.report_type == 'LOST' %}bg-danger-subtle{% else %}bg-success-subtle{% endif %}"
-         style="height:180px;">
-      {% if item.report_type == 'LOST' %}
-      <i class="bi bi-exclamation-triangle display-4 text-danger opacity-50"></i>
+  <article class="tag-card is-{{ item.report_type|lower }}{% if item.status == 'RESOLVED' %} is-resolved{% endif %}" data-item-id="{{ item.pk }}">
+    <span class="punch" aria-hidden="true"></span>
+
+    <div class="tag-media">
+      {% if item.image %}
+      <img src="{{ item.image.url }}" alt="" loading="lazy">
       {% else %}
-      <i class="bi bi-hand-thumbs-up display-4 text-success opacity-50"></i>
+      <div class="tag-placeholder"><i class="bi {{ item.category_icon }}" aria-hidden="true"></i></div>
       {% endif %}
-    </div>
-    {% endif %}
-
-    <div class="card-body">
-      {# ── Title row with type badge and status badge ── #}
-      <div class="d-flex justify-content-between align-items-start mb-2">
-        <div>
-          <span class="badge {% if item.report_type == 'LOST' %}bg-danger{% else %}bg-success{% endif %} me-1">
-            {{ item.get_report_type_display }}
-          </span>
-          <span class="badge {% if item.status == 'OPEN' %}bg-warning text-dark{% else %}bg-secondary{% endif %}"
-                id="status-badge-{{ item.pk }}">
-            {{ item.get_status_display }}
-          </span>
-        </div>
-      </div>
-      <h6 class="card-title fw-semibold mb-2">{{ item.title }}</h6>
-      <p class="card-text text-muted small mb-1">
-        <i class="bi bi-geo-alt-fill"></i> {{ item.location }}
-      </p>
-      <p class="card-text text-muted small mb-1">
-        <i class="bi bi-calendar-event"></i> {{ item.date }}
-      </p>
-      <p class="card-text text-muted small mb-0">
-        <i class="bi bi-person-fill"></i> {{ item.posted_by.get_full_name|default:item.posted_by.username }}
-      </p>
+      <span class="chip chip-{{ item.report_type|lower }}">{{ item.get_report_type_display }}</span>
+      <span class="ticket-no" title="Ticket number">#{{ item.ticket_number }}</span>
+      {% if item.status == 'RESOLVED' %}<span class="stamp" data-label="Resolved"></span>{% endif %}
     </div>
 
-    <div class="card-footer bg-transparent d-flex justify-content-between align-items-center">
-      <a href="{% url 'item_detail' item.pk %}" class="btn btn-sm btn-outline-primary">
-        <i class="bi bi-eye"></i> View
-      </a>
-      {% if item.posted_by == user and item.status == 'OPEN' %}
-      <button class="btn btn-sm btn-outline-success resolve-btn"
-              data-item-id="{{ item.pk }}" title="Mark as Resolved">
-        <i class="bi bi-check-circle"></i> Resolve
-      </button>
+    <div class="tag-body">
+      <p class="tag-cat"><i class="bi {{ item.category_icon }}" aria-hidden="true"></i> {{ item.get_category_display }}</p>
+      <h3 class="tag-title"><a href="{% url 'item_detail' item.pk %}" class="stretched-link">{{ item.title }}</a></h3>
+      <ul class="tag-meta">
+        <li><i class="bi bi-geo-alt" aria-hidden="true"></i><span class="visually-hidden">Where: </span>{{ item.location }}</li>
+        <li><i class="bi bi-calendar-event" aria-hidden="true"></i><span class="visually-hidden">Date: </span>{{ item.date|date:"j M Y" }}</li>
+      </ul>
+    </div>
+
+    <div class="tag-stub">
+      <span class="poster"><span class="avatar-sm" aria-hidden="true">{{ poster|first }}</span><span>{{ poster }}</span></span>
+      {% if item.posted_by_id == user.id %}
+        {% if item.pending_claims %}
+        <span class="chip chip-claim" title="Unanswered messages">{{ item.pending_claims }} new</span>
+        {% elif item.status == 'OPEN' %}
+        <button type="button" class="btn btn-sm btn-outline-success resolve-btn"
+                data-item-id="{{ item.pk }}" data-url="{% url 'resolve_item' item.pk %}">
+          <i class="bi bi-check2-circle"></i> Resolve
+        </button>
+        {% endif %}
       {% endif %}
     </div>
-  </div>
+  </article>
 </div>
+{% endwith %}

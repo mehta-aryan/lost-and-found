@@ -1,0 +1,62 @@
+{# Shared by create_item.html and edit_item.html. Expects: form, submit_label, cancel_url; optional item #}
+<form method="post" enctype="multipart/form-data" class="panel form-panel" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+
+  <fieldset class="mb-4">
+    <legend class="field-label">{{ form.report_type.label }}</legend>
+    <div class="type-switch">
+      {% for radio in form.report_type %}
+      <label class="type-option is-{{ radio.data.value|lower }}" for="{{ radio.id_for_label }}">
+        {{ radio.tag }}
+        <span class="type-body">
+          {% if radio.data.value == 'LOST' %}
+          <i class="bi bi-search" aria-hidden="true"></i><span><strong>I lost it</strong><small>Looking for my item</small></span>
+          {% else %}
+          <i class="bi bi-box-seam" aria-hidden="true"></i><span><strong>I found it</strong><small>Looking for its owner</small></span>
+          {% endif %}
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    {% for error in form.report_type.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
+  </fieldset>
+
+  {% include "items/_field.html" with field=form.title %}
+
+  <div class="row g-3">
+    <div class="col-sm-6">{% include "items/_field.html" with field=form.category %}</div>
+    <div class="col-sm-6">{% include "items/_field.html" with field=form.date %}</div>
+  </div>
+
+  {% include "items/_field.html" with field=form.location %}
+  {% include "items/_field.html" with field=form.description %}
+
+  <div class="mb-4 dropzone-wrap">
+    <span class="field-label">Photo<span class="optional">optional</span></span>
+    <label class="dropzone" for="{{ form.image.id_for_label }}" data-dropzone>
+      <span>
+        <img class="dz-preview {% if not item.image %}d-none{% endif %}" {% if item.image %}src="{{ item.image.url }}"{% endif %} alt="Photo preview">
+        <span class="dz-empty {% if item.image %}d-none{% endif %}">
+          <i class="bi bi-cloud-arrow-up" aria-hidden="true"></i>
+          <strong>Add a photo</strong>
+          <small>Drop an image here or click to choose · JPEG, PNG or WebP up to {{ MAX_UPLOAD_MB }} MB</small>
+        </span>
+        <span class="dz-name d-block"></span>
+      </span>
+    </label>
+    {{ form.image }}
+    <div class="field-error dz-error {% if not form.image.errors %}d-none{% endif %}" role="alert">{% for error in form.image.errors %}{{ error }}{% endfor %}</div>
+    {% if item.image %}
+    <div class="form-check mt-2">
+      {{ form.remove_image }}
+      <label class="form-check-label" for="{{ form.remove_image.id_for_label }}">{{ form.remove_image.label }}</label>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <button type="submit" class="btn btn-primary btn-lg">{{ submit_label }}</button>
+    <a href="{{ cancel_url }}" class="btn btn-outline-secondary btn-lg">Cancel</a>
+  </div>
+</form>

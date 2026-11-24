@@ -1,74 +1,156 @@
 {% extends "base.html" %}
+{% load items_extras %}
 
 {% block title %}{{ item.title }} — Campus Lost & Found{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-  <div class="col-md-8">
-    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm mb-3">
-      <i class="bi bi-arrow-left"></i> Back to Dashboard
-    </a>
+{% with poster=item.posted_by.get_full_name|default:item.posted_by.username %}
+<nav class="crumbs"><a href="{% url 'dashboard' %}"><i class="bi bi-arrow-left" aria-hidden="true"></i> All reports</a></nav>
 
-    <div class="card shadow-sm">
+<div class="row g-4">
+  <!-- Left: photo + description -->
+  <div class="col-lg-7">
+    <div class="photo-frame is-{{ item.report_type|lower }}">
       {% if item.image %}
-      <img src="{{ item.image.url }}" class="card-img-top" alt="{{ item.title }}"
-           style="max-height:400px; object-fit:contain; background:#f8f9fa;">
+      <img src="{{ item.image.url }}" alt="Photo of {{ item.title }}">
+      {% else %}
+      <div class="tag-placeholder w-100"><i class="bi {{ item.category_icon }}" aria-hidden="true"></i></div>
       {% endif %}
+    </div>
+    <section class="panel mt-4">
+      <h2>Description</h2>
+      <p class="mb-0">{{ item.description|linebreaksbr }}</p>
+    </section>
+  </div>
 
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-          <div>
-            <span class="badge {% if item.report_type == 'LOST' %}bg-danger{% else %}bg-success{% endif %} mb-2">
-              {{ item.get_report_type_display }}
-            </span>
-            <h3 class="fw-bold mb-0">{{ item.title }}</h3>
+  <!-- Right: ticket -->
+  <div class="col-lg-5">
+    <aside class="ticket is-{{ item.report_type|lower }}">
+      <span class="punch" aria-hidden="true"></span>
+      <div class="ticket-head">
+        <span class="chip chip-{{ item.report_type|lower }}">{{ item.get_report_type_display }}</span>
+        <span class="chip chip-{{ item.status|lower }}" id="status-badge-{{ item.pk }}">{{ item.get_status_display }}</span>
+        <span class="ticket-no">#{{ item.ticket_number }}</span>
+      </div>
+      <h1 class="ticket-title">{{ item.title }}</h1>
+
+      <dl class="facts">
+        <div><i class="bi bi-geo-alt fact-icon" aria-hidden="true"></i><dt>Where</dt><dd>{{ item.location }}</dd></div>
+        <div><i class="bi bi-calendar-event fact-icon" aria-hidden="true"></i><dt>{% if item.report_type == 'LOST' %}Lost on{% else %}Found on{% endif %}</dt><dd>{{ item.date|date:"l, j F Y" }}</dd></div>
+        <div><i class="bi {{ item.category_icon }} fact-icon" aria-hidden="true"></i><dt>Category</dt><dd>{{ item.get_category_display }}</dd></div>
+        <div><i class="bi bi-person fact-icon" aria-hidden="true"></i><dt>Posted by</dt><dd>{{ poster }}, {{ item.created_at|ago }}</dd></div>
+        {% if item.resolved_at %}
+        <div><i class="bi bi-patch-check fact-icon" aria-hidden="true"></i><dt>Resolved</dt><dd>{{ item.resolved_at|date:"j M Y" }}</dd></div>
+        {% endif %}
+      </dl>
+
+      <div class="perf" aria-hidden="true"></div>
+
+      <div class="ticket-actions">
+        {% if is_owner %}
+          <h2>Manage this report</h2>
+          <div class="btn-row">
+            {% if item.status == 'OPEN' %}
+            <button type="button" class="btn btn-primary resolve-btn" data-item-id="{{ item.pk }}"
+                    data-url="{% url 'resolve_item' item.pk %}" data-reload>
+              <i class="bi bi-check2-circle"></i> Mark resolved
+            </button>
+            {% endif %}
+            <a href="{% url 'edit_item' item.pk %}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Edit</a>
+            <a href="{% url 'delete_item' item.pk %}" class="btn btn-outline-danger"><i class="bi bi-trash"></i> Delete</a>
           </div>
-          <span class="badge fs-6 {% if item.status == 'OPEN' %}bg-warning text-dark{% else %}bg-secondary{% endif %}"
-                id="status-badge-{{ item.pk }}">
-            {{ item.get_status_display }}
-          </span>
-        </div>
-
-        <hr>
-
-        <p class="mb-3">{{ item.description|linebreaksbr }}</p>
-
-        <div class="row text-muted small g-2">
-          <div class="col-sm-4">
-            <i class="bi bi-geo-alt-fill"></i> <strong>Location:</strong> {{ item.location }}
-          </div>
-          <div class="col-sm-4">
-            <i class="bi bi-calendar-event"></i> <strong>Date:</strong> {{ item.date }}
-          </div>
-          <div class="col-sm-4">
-            <i class="bi bi-person-fill"></i> <strong>Posted by:</strong>
-            {{ item.posted_by.get_full_name|default:item.posted_by.username }}
-          </div>
-        </div>
-
-        <p class="text-muted small mt-2 mb-0">
-          <i class="bi bi-clock"></i> Created {{ item.created_at|timesince }} ago
-        </p>
-
-        <!-- Owner-only actions -->
-        {% if item.posted_by == user %}
-        <hr>
-        <div class="d-flex gap-2 flex-wrap">
-          {% if item.status == 'OPEN' %}
-          <button class="btn btn-success resolve-btn" data-item-id="{{ item.pk }}">
-            <i class="bi bi-check-circle"></i> Mark as Resolved
-          </button>
+        {% elif item.status == 'OPEN' %}
+          {% if my_claim %}
+            <h2>You've written to {{ poster }}</h2>
+            <div class="status-line">
+              <span class="chip chip-{{ my_claim.status|lower }}">{{ my_claim.get_status_display }}</span>
+              <span class="text-muted small">sent {{ my_claim.created_at|ago }}</span>
+            </div>
+            {% if my_claim.status == 'ACCEPTED' %}
+            <p>{{ poster }} accepted. Reach them at <a href="mailto:{{ item.posted_by.email }}">{{ item.posted_by.email }}</a>.</p>
+            {% elif my_claim.status == 'PENDING' %}
+            <p>They've been emailed. You'll hear back by email once they respond.</p>
+            {% endif %}
+          {% else %}
+            <h2>{% if item.report_type == 'LOST' %}Found this item?{% else %}Is this yours?{% endif %}</h2>
+            <p>
+              {% if item.report_type == 'LOST' %}Tell {{ poster }} where you found it and how to reach you.
+              {% else %}Describe something only the owner would know: what's inside, marks, a lock screen.{% endif %}
+              Your name and college email go with the message.
+            </p>
+            <form method="post" action="{% url 'claim_item' item.pk %}">
+              {% csrf_token %}
+              <label for="{{ claim_form.message.id_for_label }}" class="visually-hidden">Your message</label>
+              {{ claim_form.message }}
+              <div class="btn-row mt-2">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-send"></i> Send message</button>
+                <a class="btn btn-outline-secondary" href="mailto:{{ item.posted_by.email }}?subject={{ item.title|urlencode }}"><i class="bi bi-envelope"></i> Use my email app</a>
+              </div>
+            </form>
           {% endif %}
-          <a href="{% url 'edit_item' item.pk %}" class="btn btn-outline-primary">
-            <i class="bi bi-pencil"></i> Edit
-          </a>
-          <a href="{% url 'delete_item' item.pk %}" class="btn btn-outline-danger">
-            <i class="bi bi-trash"></i> Delete
-          </a>
+        {% else %}
+          <h2>This report is resolved</h2>
+          <p>The item has been returned, so messages are closed.</p>
+        {% endif %}
+        <div class="btn-row mt-1">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-copy-link><i class="bi bi-link-45deg"></i> Copy link</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+{% if is_owner %}
+<section class="mt-5" id="messages">
+  <h2 class="h4 mb-3">Messages about this report <span class="text-muted tnum">({{ claims|length }})</span></h2>
+  {% if claims %}
+  <div class="claim-list">
+    {% for claim in claims %}
+    {% with cname=claim.claimant.get_full_name|default:claim.claimant.username %}
+    <article class="claim">
+      <span class="avatar-sm" aria-hidden="true">{{ cname|first }}</span>
+      <div>
+        <div class="claim-head">
+          <strong>{{ cname }}</strong>
+          <a href="mailto:{{ claim.claimant.email }}">{{ claim.claimant.email }}</a>
+          <span class="when">{{ claim.created_at|ago }}</span>
+          <span class="chip chip-{{ claim.status|lower }}">{{ claim.get_status_display }}</span>
+        </div>
+        <p>{{ claim.message|linebreaksbr }}</p>
+        {% if claim.status == 'PENDING' and item.status == 'OPEN' %}
+        <div class="btn-row">
+          <form method="post" action="{% url 'accept_claim' claim.pk %}"
+                data-confirm="This marks the report as resolved and declines any other pending messages. {{ cname }} will be emailed."
+                data-confirm-title="Accept this message?" data-confirm-label="Accept">
+            {% csrf_token %}<button class="btn btn-sm btn-primary"><i class="bi bi-check2"></i> Accept</button>
+          </form>
+          <form method="post" action="{% url 'decline_claim' claim.pk %}"
+                data-confirm="{{ cname }} will be told you declined." data-confirm-title="Decline this message?" data-confirm-label="Decline" data-confirm-danger>
+            {% csrf_token %}<button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-lg"></i> Decline</button>
+          </form>
         </div>
         {% endif %}
       </div>
-    </div>
+    </article>
+    {% endwith %}
+    {% endfor %}
   </div>
-</div>
+  {% else %}
+  <div class="panel text-muted">No messages yet. When someone writes about this report, it shows up here and in your email.</div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if matches %}
+<section>
+  <div class="matches-head">
+    <h2>Possible matches</h2>
+    <p>Open {% if item.report_type == 'LOST' %}found{% else %}lost{% endif %} reports with a similar name or place, within two weeks.</p>
+  </div>
+  <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-4">
+    {% for item in matches %}{% include "items/_item_card.html" %}{% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endwith %}
 {% endblock %}

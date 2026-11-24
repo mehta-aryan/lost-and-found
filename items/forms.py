@@ -1,80 +1,116 @@
 """
-items/forms.py — Django ModelForms for item submission.
+items/forms.py — Django forms.
 
-ModelForm auto-generates form fields from the ItemReport model
-and handles validation.  Bootstrap classes are added via widget attrs.
-Custom clean methods enforce:
-  • date cannot be in the future
-  • uploaded image must be JPEG / PNG / WebP and ≤ MAX_UPLOAD_SIZE_MB
+ItemReportForm  – create / edit a report (validates date, image type + size)
+ClaimForm       – the message a student sends to the poster
 """
 from datetime import date as _date
 
 from django import forms
 from django.conf import settings
 
-from .models import ItemReport
+from .models import Claim, ItemReport
 
 
 class ItemReportForm(forms.ModelForm):
-    """
-    Form for creating / editing an ItemReport.
-    The 'report_type' is usually pre-selected via the quick-add modal,
-    but the user can still change it in the form.
-    """
+    remove_image = forms.BooleanField(
+        required=False, label='Remove current photo',
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+    )
 
     class Meta:
         model = ItemReport
-        fields = ['report_type', 'title', 'description', 'image', 'location', 'date']
+        fields = ['report_type', 'category', 'title', 'description', 'image', 'location', 'date']
+        labels = {
+            'report_type': 'What are you reporting?',
+            'title': 'Item name',
+            'location': 'Where',
+            'date': 'Date',
+            'description': 'Description',
+        }
+        help_texts = {
+            'title': '',
+            'location': '',
+            'date': '',
+            'description': 'Colour, brand, marks, what was inside — anything that helps the owner recognise it.',
+        }
         widgets = {
-            'report_type': forms.Select(attrs={'class': 'form-select'}),
+            'report_type': forms.RadioSelect(attrs={'class': 'type-input'}),
+            'category': forms.Select(attrs={'class': 'form-select'}),
             'title': forms.TextInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'e.g. Blue backpack',
-                'maxlength': '200',
+                'class': 'form-control', 'placeholder': 'e.g. Blue Nike backpack', 'maxlength': '200',
             }),
             'description': forms.Textarea(attrs={
-                'class': 'form-control',
-                'rows': 4,
+                'class': 'form-control', 'rows': 4,
                 'placeholder': 'Describe the item in detail…',
             }),
-            'image': forms.ClearableFileInput(attrs={
-                'class': 'form-control',
+            'image': forms.FileInput(attrs={
+                'class': 'visually-hidden',
                 'accept': 'image/jpeg,image/png,image/webp',
+                'data-image-input': '1',
             }),
             'location': forms.TextInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'e.g. Library 2nd floor',
-                'maxlength': '200',
+                'class': 'form-control', 'placeholder': 'e.g. Library, 2nd floor', 'maxlength': '200',
             }),
-            'date': forms.DateInput(attrs={
-                'class': 'form-control',
-                'type': 'date',
-            }),
+            'date': forms.DateInput(format='%Y-%m-%d', attrs={'class': 'form-control', 'type': 'date'}),
         }
 
-    # ── Custom field-level validation ──────────────────────
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Drop the "---------" placeholder choice: the user must pick Lost or Found.
+        self.fields['report_type'].choices = ItemReport.REPORT_TYPE_CHOICES
+        self.fields['date'].widget.attrs['max'] = _date.today().isoformat()
+        self.fields['image'].widget.attrs['data-max-mb'] = str(getattr(settings, 'MAX_UPLOAD_SIZE_MB', 5))
+
+    def full_clean(self):
+        super().full_clean()
+        # Mark invalid inputs so Bootstrap draws the red outline.
+        for name in self.errors:
+            field = self.fields.get(name)
+            if field and name != 'report_type':
+                css = field.widget.attrs.get('class', '')
+                if 'is-invalid' not in css:
+                    field.widget.attrs['class'] = (css + ' is-invalid').strip()
 
     def clean_date(self):
-        """Reject dates that lie in the future."""
         value = self.cleaned_data.get('date')
         if value and value > _date.today():
             raise forms.ValidationError('Date cannot be in the future.')
         return value
 
     def clean_image(self):
-        """Enforce file-type whitelist and maximum size."""
         image = self.cleaned_data.get('image')
         if image and hasattr(image, 'content_type'):
-            allowed = getattr(settings, 'ALLOWED_IMAGE_TYPES',
-                              ['image/jpeg', 'image/png', 'image/webp'])
+            allowed = getattr(settings, 'ALLOWED_IMAGE_TYPES', ['image/jpeg', 'image/png', 'image/webp'])
             max_mb = getattr(settings, 'MAX_UPLOAD_SIZE_MB', 5)
-
+            # Django's ImageField sets content_type from Pillow's own detection,
+            # not from the browser, so this check can't be spoofed by renaming a file.
             if image.content_type not in allowed:
-                raise forms.ValidationError(
-                    'Only JPEG, PNG, and WebP images are allowed.'
-                )
+                raise forms.ValidationError('Only JPEG, PNG, and WebP images are allowed.')
             if image.size > max_mb * 1024 * 1024:
-                raise forms.ValidationError(
-                    f'Image must be smaller than {max_mb} MB.'
-                )
+                raise forms.ValidationError(f'Image must be smaller than {max_mb} MB.')
         return image
+
+    def save(self, commit=True):
+        item = super().save(commit=False)
+        if self.cleaned_data.get('remove_image') and not self.files.get('image'):
+            item.image = None            # old file is deleted by the pre_save signal
+        if commit:
+            item.save()
+        return item
+
+
+class ClaimForm(forms.ModelForm):
+    class Meta:
+        model = Claim
+        fields = ['message']
+        labels = {'message': 'Your message'}
+        widgets = {
+            'message': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'maxlength': '1000'}),
+        }
+
+    def clean_message(self):
+        message = (self.cleaned_data.get('message') or '').strip()
+        if len(message) < 10:
+            raise forms.ValidationError('Please write at least 10 characters so the poster has something to go on.')
+        return message

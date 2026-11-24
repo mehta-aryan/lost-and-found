@@ -1,79 +1,113 @@
 {% extends "base.html" %}
-{% load static %}
 
-{% block title %}Dashboard — Campus Lost & Found{% endblock %}
+{% block title %}Browse reports — Campus Lost & Found{% endblock %}
 
 {% block content %}
-<!-- Search bar -->
-<div class="row mb-4">
-  <div class="col-md-8 mx-auto">
-    <form method="get" action="{% url 'dashboard' %}" class="input-group">
-      <input type="text" name="q" class="form-control"
-             placeholder="Search by title or location…" value="{{ query }}"
-             aria-label="Search items">
-      <button class="btn btn-primary" type="submit">
-        <i class="bi bi-search"></i> Search
-      </button>
-      {% if query %}
-      <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">Clear</a>
-      {% endif %}
-    </form>
-  </div>
-</div>
+<section class="finder">
+  <div class="row g-4 align-items-center">
+    <div class="col-lg-7">
+      <h1 class="display-title">Lost something on campus?</h1>
+      <p class="lede">Search what's been reported, or post your own. Anyone who recognises an item can message you directly.</p>
 
-<!-- Nav Tabs: Lost / Found -->
-<ul class="nav nav-tabs" id="itemTabs" role="tablist">
+      <form method="get" action="{% url 'dashboard' %}" class="search-bar" role="search">
+        <div class="search-field">
+          <i class="bi bi-search" aria-hidden="true"></i>
+          <input type="search" name="q" class="form-control" value="{{ query }}"
+                 placeholder="Search by name, place or description" aria-label="Search reports">
+        </div>
+        <select name="category" class="form-select" data-autosubmit aria-label="Category">
+          <option value="">All categories</option>
+          {% for value, label in categories %}
+          <option value="{{ value }}" {% if value == category %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <select name="status" class="form-select" data-autosubmit aria-label="Status">
+          <option value="open" {% if status == 'open' %}selected{% endif %}>Open</option>
+          <option value="resolved" {% if status == 'resolved' %}selected{% endif %}>Resolved</option>
+          <option value="all" {% if status == 'all' %}selected{% endif %}>All</option>
+        </select>
+        <button class="btn btn-primary" type="submit">Search</button>
+      </form>
+      {% if filters_active %}<a class="clear-link" href="{% url 'dashboard' %}">Clear search and filters</a>{% endif %}
+
+      <p class="reunited tnum"><i class="bi bi-patch-check-fill" aria-hidden="true"></i>{{ stats.resolved }} report{{ stats.resolved|pluralize }} resolved so far</p>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="action-stack">
+        <a href="{% url 'create_item' %}?type=LOST" class="action-tile is-lost">
+          <span class="tile-icon"><i class="bi bi-search" aria-hidden="true"></i></span>
+          <span><strong>I lost something</strong><small>Post it so finders can reach you.</small></span>
+        </a>
+        <a href="{% url 'create_item' %}?type=FOUND" class="action-tile is-found">
+          <span class="tile-icon"><i class="bi bi-box-seam" aria-hidden="true"></i></span>
+          <span><strong>I found something</strong><small>Help it get back to its owner.</small></span>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<ul class="nav seg mb-4" id="itemTabs" role="tablist" data-explicit="{% if tab_explicit %}1{% else %}0{% endif %}">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="lost-tab" data-bs-toggle="tab"
-            data-bs-target="#lostPane" type="button" role="tab"
-            aria-controls="lostPane" aria-selected="true">
-      <i class="bi bi-exclamation-triangle text-danger"></i>
-      Lost Items <span class="badge bg-danger ms-1">{{ lost_items|length }}</span>
+    <button class="nav-link is-lost {% if active_tab == 'lost' %}active{% endif %}" id="lost-tab" data-bs-toggle="tab"
+            data-bs-target="#lostPane" type="button" role="tab" aria-controls="lostPane"
+            aria-selected="{% if active_tab == 'lost' %}true{% else %}false{% endif %}">
+      <span class="dot" aria-hidden="true"></span> Lost <span class="count tnum">{{ lost_page.paginator.count }}</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="found-tab" data-bs-toggle="tab"
-            data-bs-target="#foundPane" type="button" role="tab"
-            aria-controls="foundPane" aria-selected="false">
-      <i class="bi bi-hand-thumbs-up text-success"></i>
-      Found Items <span class="badge bg-success ms-1">{{ found_items|length }}</span>
+    <button class="nav-link is-found {% if active_tab == 'found' %}active{% endif %}" id="found-tab" data-bs-toggle="tab"
+            data-bs-target="#foundPane" type="button" role="tab" aria-controls="foundPane"
+            aria-selected="{% if active_tab == 'found' %}true{% else %}false{% endif %}">
+      <span class="dot" aria-hidden="true"></span> Found <span class="count tnum">{{ found_page.paginator.count }}</span>
     </button>
   </li>
 </ul>
 
-<div class="tab-content pt-3" id="itemTabsContent">
-  <!-- ─── Lost Items Tab ─── -->
-  <div class="tab-pane fade show active" id="lostPane" role="tabpanel"
-       aria-labelledby="lost-tab">
-    {% if lost_items %}
-    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-      {% for item in lost_items %}
-      {% include "items/_item_card.html" %}
-      {% endfor %}
+<div class="tab-content">
+  <!-- Lost -->
+  <div class="tab-pane fade {% if active_tab == 'lost' %}show active{% endif %}" id="lostPane" role="tabpanel" aria-labelledby="lost-tab" tabindex="0">
+    {% if lost_page.object_list %}
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 g-4">
+      {% for item in lost_page %}{% include "items/_item_card.html" %}{% endfor %}
     </div>
+    {% include "items/_pagination.html" with page_obj=lost_page param="lost_page" tab="lost" %}
     {% else %}
-    <div class="text-center text-muted py-5">
-      <i class="bi bi-emoji-smile display-3"></i>
-      <p class="mt-3 fs-5">No lost items{% if query %} matching "{{ query }}"{% endif %}.</p>
-      <p class="small">That's great news — or be the first to report one!</p>
+    <div class="empty">
+      <i class="bi bi-emoji-smile" aria-hidden="true"></i>
+      {% if filters_active %}
+      <h3>No lost reports match</h3>
+      <p>Try a different word, or clear the filters to see everything.</p>
+      <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Clear filters</a>
+      {% else %}
+      <h3>Nothing reported as lost</h3>
+      <p>Lost something? Post it so anyone who finds it knows who to contact.</p>
+      <a class="btn btn-primary" href="{% url 'create_item' %}?type=LOST">Report a lost item</a>
+      {% endif %}
     </div>
     {% endif %}
   </div>
 
-  <!-- ─── Found Items Tab ─── -->
-  <div class="tab-pane fade" id="foundPane" role="tabpanel"
-       aria-labelledby="found-tab">
-    {% if found_items %}
-    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-      {% for item in found_items %}
-      {% include "items/_item_card.html" %}
-      {% endfor %}
+  <!-- Found -->
+  <div class="tab-pane fade {% if active_tab == 'found' %}show active{% endif %}" id="foundPane" role="tabpanel" aria-labelledby="found-tab" tabindex="0">
+    {% if found_page.object_list %}
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 g-4">
+      {% for item in found_page %}{% include "items/_item_card.html" %}{% endfor %}
     </div>
+    {% include "items/_pagination.html" with page_obj=found_page param="found_page" tab="found" %}
     {% else %}
-    <div class="text-center text-muted py-5">
-      <i class="bi bi-inbox display-3"></i>
-      <p class="mt-3 fs-5">No found items{% if query %} matching "{{ query }}"{% endif %}.</p>
-      <p class="small">Found something? Use the <i class="bi bi-plus-circle"></i> button to report it!</p>
+    <div class="empty">
+      <i class="bi bi-inbox" aria-hidden="true"></i>
+      {% if filters_active %}
+      <h3>No found reports match</h3>
+      <p>Try a different word, or clear the filters to see everything.</p>
+      <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Clear filters</a>
+      {% else %}
+      <h3>Nothing reported as found</h3>
+      <p>Found something? Post it so its owner can get in touch.</p>
+      <a class="btn btn-found" href="{% url 'create_item' %}?type=FOUND">Report a found item</a>
+      {% endif %}
     </div>
     {% endif %}
   </div>

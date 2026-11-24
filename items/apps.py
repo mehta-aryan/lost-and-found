@@ -13,4 +13,3 @@ class ItemsConfig(AppConfig):
     def ready(self):
         # Import signals so the post_save handlers are registered
         import items.signals  # noqa: F401
-

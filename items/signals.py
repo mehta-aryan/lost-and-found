@@ -1,27 +1,36 @@
 """
-items/signals.py — Auto-create a UserProfile when a new User is created.
+items/signals.py
 
-Uses Django's post_save signal so we never have to manually
-create UserProfile objects.
+  • create a UserProfile for every new User
+  • delete image files from disk when a report is deleted or its photo is replaced
 """
-from django.db.models.signals import post_save
-from django.dispatch import receiver
 from django.contrib.auth.models import User
-from .models import UserProfile
+from django.db.models.signals import post_delete, post_save, pre_save
+from django.dispatch import receiver
+
+from .models import ItemReport, UserProfile
 
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
-    """Create a UserProfile automatically when a new User is saved."""
     if created:
-        UserProfile.objects.create(user=instance)
+        UserProfile.objects.get_or_create(user=instance)
 
 
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    """Save the UserProfile whenever the User is saved."""
-    # Use getattr to avoid errors if profile doesn't exist yet
-    profile = getattr(instance, 'profile', None)
-    if profile:
-        profile.save()
+@receiver(pre_save, sender=ItemReport)
+def delete_replaced_image(sender, instance, **kwargs):
+    """If the photo changed (or was removed), delete the old file."""
+    update_fields = kwargs.get('update_fields')
+    if not instance.pk or (update_fields is not None and 'image' not in update_fields):
+        return
+    old = ItemReport.objects.filter(pk=instance.pk).only('image').first()
+    if old and old.image:
+        new_name = instance.image.name if instance.image else None
+        if old.image.name != new_name:
+            old.image.delete(save=False)
 
+
+@receiver(post_delete, sender=ItemReport)
+def delete_image_with_report(sender, instance, **kwargs):
+    if instance.image:
+        instance.image.delete(save=False)
