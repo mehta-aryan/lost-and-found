@@ -56,6 +56,7 @@
     el.addEventListener('hidden.bs.toast', function () { el.remove(); });
     new bootstrap.Toast(el, { delay: 5000 }).show();
   }
+  window.showToast = showToast;   // expose globally so chat.js can use it
 
   $$('#toastStack .toast').forEach(function (el) {              // server-rendered flash messages
     new bootstrap.Toast(el, { delay: 6000 }).show();

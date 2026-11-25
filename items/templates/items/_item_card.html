@@ -29,7 +29,8 @@
       {% if item.posted_by_id == user.id %}
         {% if item.unread_messages %}
         <span class="chip chip-claim" title="Unread messages">{{ item.unread_messages }} new</span>
-        {% elif item.status == 'OPEN' %}
+        {% endif %}
+        {% if item.status == 'OPEN' %}
         <button type="button" class="btn btn-sm btn-outline-success resolve-btn"
                 data-item-id="{{ item.pk }}" data-url="{% url 'resolve_item' item.pk %}">
           <i class="bi bi-check2-circle"></i> Resolve

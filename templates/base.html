@@ -113,7 +113,7 @@
 
   {% if user.is_authenticated %}
   <!-- Mobile quick-add button -->
-  <button class="btn btn-primary fab d-lg-none" data-bs-toggle="modal" data-bs-target="#quickAddModal" aria-label="Report an item">
+  <button class="btn btn-primary fab d-lg-none {% if request.resolver_match.url_name == 'chat_detail' %}d-none{% endif %}" data-bs-toggle="modal" data-bs-target="#quickAddModal" aria-label="Report an item">
     <i class="bi bi-plus-lg"></i>
   </button>
 

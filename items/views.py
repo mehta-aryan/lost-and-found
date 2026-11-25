@@ -132,18 +132,7 @@ def item_detail(request, pk):
         'matches': find_matches(item) if item.is_open else [],
     }
     if is_owner:
-        # Show all conversations for this report (with unread count per conversation)
-        convs = (
-            item.conversations
-            .select_related('participant')
-            .annotate(
-                unread=Count(
-                    'messages',
-                    filter=Q(messages__read_at__isnull=True, messages__sender=item.posted_by) == False
-                )
-            )
-        )
-        # Simpler: just annotate unread messages from participant
+        # Show all conversations for this report with messages prefetched
         convs = item.conversations.select_related('participant').prefetch_related('messages')
         conv_data = []
         for conv in convs:
@@ -277,12 +266,13 @@ def inbox(request):
         Conversation.objects
         .filter(Q(participant=me) | Q(item__posted_by=me))
         .select_related('item', 'item__posted_by', 'participant')
+        .prefetch_related('messages')
         .order_by('-updated_at')
     )
 
     inbox_data = []
     for conv in convs:
-        msgs = list(conv.messages.order_by('created_at'))
+        msgs = list(conv.messages.all())
         last = msgs[-1] if msgs else None
         other = conv.other_user(me)
         unread = sum(1 for m in msgs if m.read_at is None and m.sender != me)
@@ -333,16 +323,16 @@ def send_message(request, pk):
         messages.error(request, 'This report is resolved. Chat is closed.')
         return redirect('chat_detail', pk=conv.pk)
 
-    # Simple per-user rate limit: 30 messages per minute
+    # Simple per-user rate limit: 30 messages per minute (atomic add, TTL set once)
     rate_key = f'chat_rate_{request.user.pk}'
-    count = cache.get(rate_key, 0)
-    if count >= 30:
+    cache.add(rate_key, 0, 60)   # only sets if key absent — preserves existing TTL
+    count = cache.incr(rate_key)
+    if count > 30:
         err = 'You are sending messages too quickly. Please wait a moment.'
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JsonResponse({'error': err}, status=429)
         messages.error(request, err)
         return redirect('chat_detail', pk=conv.pk)
-    cache.set(rate_key, count + 1, timeout=60)
 
     form = MessageForm(request.POST)
     if not form.is_valid():

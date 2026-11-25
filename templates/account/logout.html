@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Sign out — Campus Lost & Found{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-center align-items-center" style="min-height: 60vh;">
+  <div style="width: 100%; max-width: 420px;">
+    <article class="ticket is-lost">
+      <span class="punch" aria-hidden="true"></span>
+      <div class="ticket-head">
+        <span class="chip chip-open">Account</span>
+        <span class="ticket-no">Sign out</span>
+      </div>
+      <h1 class="ticket-title">Sign out?</h1>
+      <div class="perf" aria-hidden="true"></div>
+      <div class="ticket-actions">
+        <p class="text-muted mb-4">You'll need to sign in again to post or message about reports.</p>
+        <form method="post" action="{% url 'account_logout' %}">
+          {% csrf_token %}
+          <div class="btn-row">
+            <button type="submit" class="btn btn-danger">
+              <i class="bi bi-box-arrow-right"></i> Sign out
+            </button>
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+              <i class="bi bi-arrow-left"></i> Cancel
+            </a>
+          </div>
+        </form>
+      </div>
+    </article>
+  </div>
+</div>
+{% endblock %}

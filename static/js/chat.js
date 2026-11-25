@@ -4,61 +4,41 @@
  * - Renders initial server-side bubbles via textContent (no innerHTML for user text)
  * - Sends messages via fetch; falls back to plain form submit when JS unavailable
  * - Polls /chat/<pk>/poll/?after=<id> every ~4 s while visible, pauses when hidden
- * - Polls immediately on window focus
+ * - Polls immediately on window focus (once, without duplicate interval)
  * - De-duplicates by message id
  * - Auto-scrolls to bottom unless the user has scrolled up
- * - Shows network errors via showToast() from main.js
+ * - Shows network errors via window.showToast() from main.js
  * - Enter = send, Shift+Enter = newline
+ * - Auto-grows textarea; resets after send
+ * - Consistent timestamps from data-ts ISO attribute
+ * - Date separators between messages of different days
  */
 (function () {
   'use strict';
 
-  var box     = document.getElementById('chatMsgs');
-  var form    = document.getElementById('chatForm');
+  var box      = document.getElementById('chatMsgs');
+  var form     = document.getElementById('chatForm');
   var textarea = document.getElementById('msgBody');
   var sendBtn  = document.getElementById('sendBtn');
 
   if (!box) return;   // not on the chat page
 
-  var SEND_URL   = box.dataset.sendUrl;
-  var POLL_URL   = box.dataset.pollUrl;
-  var ME         = parseInt(box.dataset.me, 10);
-  var closed     = box.dataset.closed === '1';
-
-  // ── Render initial bubbles (textContent, never innerHTML for user body) ──
-  Array.prototype.forEach.call(box.querySelectorAll('.bubble[data-body]'), function (el) {
-    el.textContent = el.getAttribute('data-body');
-    el.removeAttribute('data-body');
-  });
+  var SEND_URL = box.dataset.sendUrl;
+  var POLL_URL = box.dataset.pollUrl;
+  var ME       = parseInt(box.dataset.me, 10);
+  var closed   = box.dataset.closed === '1';
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   function getCSRF() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta && meta.content) return meta.content;
     var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : '';
   }
 
   function safeShowToast(msg, kind) {
-    if (typeof showToast === 'function') showToast(msg, kind || 'danger');
-  }
-
-  var renderedIds = {};
-  // Seed from server-rendered messages
-  Array.prototype.forEach.call(box.querySelectorAll('[data-msg-id]'), function (el) {
-    renderedIds[el.dataset.msgId] = true;
-  });
-
-  function lastRenderedId() {
-    var ids = Object.keys(renderedIds).map(Number);
-    return ids.length ? Math.max.apply(null, ids) : 0;
-  }
-
-  var atBottom = true;
-  box.addEventListener('scroll', function () {
-    atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-  });
-  function scrollToBottom() {
-    box.scrollTop = box.scrollHeight;
+    if (typeof window.showToast === 'function') window.showToast(msg, kind || 'danger');
   }
 
   function formatTime(iso) {
@@ -67,13 +47,74 @@
     } catch (e) { return ''; }
   }
 
+  function localDateKey(iso) {
+    var d = new Date(iso);
+    return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+  }
+
+  function dateSeparatorLabel(iso) {
+    var d = new Date(iso);
+    var today = new Date();
+    var yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  // ── Seed from server-rendered messages ───────────────────────────────────
+  var renderedIds = {};
+  var lastDateKey = null;
+
+  Array.prototype.forEach.call(box.querySelectorAll('[data-msg-id]'), function (el) {
+    var bodyEl = el.querySelector('.bubble[data-body]');
+    if (bodyEl) {
+      bodyEl.textContent = bodyEl.getAttribute('data-body');
+      bodyEl.removeAttribute('data-body');
+    }
+    var ts = el.getAttribute('data-ts');
+    var metaEl = el.querySelector('.bubble-meta');
+    if (ts && metaEl) metaEl.textContent = formatTime(ts);
+    renderedIds[el.dataset.msgId] = true;
+    if (ts) lastDateKey = localDateKey(ts);  // track last date but don't insert separators for initial load
+  });
+
+  function lastRenderedId() {
+    var ids = Object.keys(renderedIds).map(Number);
+    return ids.length ? Math.max.apply(null, ids) : 0;
+  }
+
+  // ── Scroll ───────────────────────────────────────────────────────────────
+  var atBottom = true;
+  box.addEventListener('scroll', function () {
+    atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  });
+  function scrollToBottom() {
+    box.scrollTop = box.scrollHeight;
+  }
+
+  scrollToBottom();
+
+  // ── Append a new message bubble ──────────────────────────────────────────
   function appendMessage(m) {
     if (renderedIds[m.id]) return;
     renderedIds[m.id] = true;
 
+    // Date separator
+    if (m.ts) {
+      var key = localDateKey(m.ts);
+      if (key !== lastDateKey) {
+        lastDateKey = key;
+        var sep = document.createElement('div');
+        sep.className = 'date-sep';
+        sep.textContent = dateSeparatorLabel(m.ts);
+        box.appendChild(sep);
+      }
+    }
+
     var group = document.createElement('div');
     group.className = 'msg-group ' + (m.mine ? 'mine' : 'theirs');
     group.setAttribute('data-msg-id', m.id);
+    if (m.ts) group.setAttribute('data-ts', m.ts);
 
     var bubble = document.createElement('div');
     bubble.className = 'bubble ' + (m.mine ? 'bubble-mine' : 'bubble-theirs');
@@ -81,7 +122,7 @@
 
     var meta = document.createElement('div');
     meta.className = 'bubble-meta';
-    meta.textContent = formatTime(m.ts);
+    meta.textContent = m.ts ? formatTime(m.ts) : '';
 
     group.appendChild(bubble);
     group.appendChild(meta);
@@ -89,8 +130,6 @@
 
     if (atBottom) scrollToBottom();
   }
-
-  scrollToBottom();
 
   // ── Polling ──────────────────────────────────────────────────────────────
   var pollTimer = null;
@@ -111,23 +150,31 @@
       .catch(function () { /* silent — network hiccup */ });
   }
 
-  function startPolling() {
-    if (closed) return;
-    stopPolling();
-    poll();
-    pollTimer = setInterval(poll, POLL_MS);
-  }
-
   function stopPolling() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
 
-  document.addEventListener('visibilitychange', function () {
-    if (document.hidden) stopPolling(); else startPolling();
-  });
-  window.addEventListener('focus', function () { if (!document.hidden) { stopPolling(); poll(); startPolling(); } });
+  function startPolling() {
+    if (closed) return;
+    stopPolling();
+    pollTimer = setInterval(poll, POLL_MS);
+  }
 
-  if (!closed) startPolling();
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stopPolling(); else { poll(); startPolling(); }
+  });
+  // On focus: poll once, then let the existing interval continue (or start one)
+  window.addEventListener('focus', function () {
+    if (!document.hidden) {
+      poll();
+      if (!pollTimer) startPolling();
+    }
+  });
+
+  if (!closed) {
+    poll();
+    startPolling();
+  }
 
   // ── Show closed state dynamically ────────────────────────────────────────
   function showClosedBanner() {
@@ -138,6 +185,22 @@
     banner.className = 'chat-closed-banner';
     banner.innerHTML = '<i class="bi bi-lock"></i> This report is resolved — chat is read-only.';
     footer.appendChild(banner);
+  }
+
+  // ── Textarea auto-grow ───────────────────────────────────────────────────
+  if (textarea) {
+    var MAX_ROWS = 6;
+    var lineH = 0;
+    function autoGrow() {
+      textarea.style.height = 'auto';
+      if (!lineH) {
+        var cs = window.getComputedStyle(textarea);
+        lineH = parseFloat(cs.lineHeight) || 20;
+      }
+      var maxH = lineH * MAX_ROWS + parseFloat(window.getComputedStyle(textarea).paddingTop) * 2;
+      textarea.style.height = Math.min(textarea.scrollHeight, maxH) + 'px';
+    }
+    textarea.addEventListener('input', autoGrow);
   }
 
   // ── Send ─────────────────────────────────────────────────────────────────
@@ -176,7 +239,7 @@
       .then(function (res) {
         if (!res.ok) throw new Error(res.d.error || 'Could not send message.');
         textarea.value = '';
-        textarea.style.height = '';
+        textarea.style.height = '';   // reset auto-grow
         appendMessage(res.d);
         scrollToBottom();
         atBottom = true;

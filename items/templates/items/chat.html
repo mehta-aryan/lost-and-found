@@ -10,7 +10,7 @@
 .chat-msgs  { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
 .chat-footer{ flex: none; border-top: 1px solid var(--lf-line); padding: .75rem 1rem; background: var(--lf-surface); border-radius: 0 0 18px 18px; }
 /* Bubbles */
-.bubble     { max-width: 72%; padding: .55rem .85rem; border-radius: 16px; word-break: break-word; font-size: .95rem; }
+.bubble     { max-width: 72%; padding: .55rem .85rem; border-radius: 16px; word-break: break-word; font-size: .95rem; white-space: pre-wrap; }
 .bubble-mine{ align-self: flex-end; background: var(--lf-accent); color: var(--lf-accent-ink); border-bottom-right-radius: 4px; }
 .bubble-theirs{ align-self: flex-start; background: var(--lf-surface-2); color: var(--lf-ink); border-bottom-left-radius: 4px; }
 .bubble-meta{ font-size: .78rem; color: var(--lf-ink-2); margin-top: .2rem; }
@@ -60,9 +60,9 @@
          data-closed="{% if closed %}1{% else %}0{% endif %}">
       {# Initial messages rendered server-side; JS will keep them in sync #}
       {% for msg in msgs %}
-      <div class="msg-group {% if msg.sender_id == request.user.id %}mine{% else %}theirs{% endif %}" data-msg-id="{{ msg.pk }}">
+      <div class="msg-group {% if msg.sender_id == request.user.id %}mine{% else %}theirs{% endif %}" data-msg-id="{{ msg.pk }}" data-ts="{{ msg.created_at.isoformat }}">
         <div class="bubble {% if msg.sender_id == request.user.id %}bubble-mine{% else %}bubble-theirs{% endif %}" data-body="{{ msg.body }}"></div>
-        <div class="bubble-meta">{{ msg.created_at|ago }}</div>
+        <div class="bubble-meta"></div>
       </div>
       {% endfor %}
     </div>
