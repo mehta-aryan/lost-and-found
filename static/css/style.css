@@ -85,7 +85,7 @@ body {
 
 main {
   flex: 1;
-  animation: lf-fadein .2s ease both;
+  animation: lf-card-in .4s ease backwards;
 }
 
 h1,
@@ -711,8 +711,14 @@ a {
 .tab-pane {
   transition: opacity .18s ease;
 }
-.tab-pane.fade { opacity: 0; }
-.tab-pane.fade.show { opacity: 1; }
+
+.tab-pane.fade {
+  opacity: 0;
+}
+
+.tab-pane.fade.show {
+  opacity: 1;
+}
 
 .pagination {
   --bs-pagination-bg: var(--lf-surface);
@@ -1555,7 +1561,7 @@ a {
   bottom: 0;
   left: 0;
   height: 3px;
-  background: rgba(255,255,255,.5);
+  background: rgba(255, 255, 255, .5);
   animation: lf-toast-bar 5s linear forwards;
 }
 
@@ -1591,8 +1597,13 @@ a {
   background: var(--lf-line);
 }
 
-.date-sep::before { left: 0; }
-.date-sep::after  { right: 0; }
+.date-sep::before {
+  left: 0;
+}
+
+.date-sep::after {
+  right: 0;
+}
 
 /* New bubble animation */
 .msg-group {
@@ -1611,43 +1622,93 @@ a {
 
 /* ── 14. Keyframes ──────────────────────────── */
 @keyframes lf-fadein {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes lf-slide-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes lf-card-in {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes lf-bubble-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes lf-stamp-in {
-  from { opacity: 0; transform: scale(2.5) rotate(-25deg); }
-  to   { opacity: 1; transform: scale(1) rotate(-9deg); }
+  from {
+    opacity: 0;
+    transform: scale(2.5) rotate(-25deg);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(-9deg);
+  }
 }
 
 @keyframes lf-toast-in {
-  from { opacity: 0; transform: translateX(2rem); }
-  to   { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(2rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes lf-toast-bar {
-  from { width: 100%; }
-  to   { width: 0; }
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0;
+  }
 }
 
 @keyframes lf-shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 @media (max-width: 575.98px) {

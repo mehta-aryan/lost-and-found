@@ -1,54 +1,96 @@
-# 🔍 Campus Lost & Found
+<div align="center">
 
-A web app where college students report lost items, log found items, and get them back to their owners. Built with Django (MVT), Bootstrap 5 and Google sign-in via django-allauth.
+<h1>🔍 Campus Lost & Found</h1>
 
-Reports look like **claim tickets** (punched hole, perforated stub). Lost is red, Found is teal, and there is a light and a dark theme.
+<p><strong>Get lost things back to their owners.</strong><br>
+Post what you lost or found, get matches suggested automatically, and chat privately — no phone numbers or emails shared.</p>
+
+<p>
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white">
+  <img alt="Django" src="https://img.shields.io/badge/Django-MVT-092E20?logo=django&logoColor=white">
+  <img alt="Bootstrap" src="https://img.shields.io/badge/Bootstrap-5-7952B3?logo=bootstrap&logoColor=white">
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white">
+  <img alt="Google OAuth" src="https://img.shields.io/badge/Google-OAuth%202.0-4285F4?logo=google&logoColor=white">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-100%2B-2EA44F">
+</p>
+
+<p>
+  <a href="#-features">Features</a> ·
+  <a href="#-how-it-works">How it works</a> ·
+  <a href="#-quick-start">Quick start</a> ·
+  <a href="#-project-structure">Structure</a> ·
+  <a href="#-more-details">Details</a>
+</p>
+
+</div>
 
 ---
+
+<!--
+📸 SCREENSHOTS — take 3 screenshots, save them in a docs/ folder, then delete this comment's start/end markers.
+
+## 📸 Screenshots
+
+<div align="center">
+  <img src="docs/dashboard.png" alt="Dashboard" width="880">
+</div>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/detail.png" alt="Report detail with possible matches"></td>
+    <td width="50%"><img src="docs/chat.png" alt="Private chat"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Report detail & possible matches</sub></td>
+    <td align="center"><sub>Private chat with "Seen"</sub></td>
+  </tr>
+</table>
+-->
 
 ## ✨ Features
 
-- **Google sign-in, college accounts only.** Verified email + domain check; local sign-up is closed so it can't be bypassed
-- **Dashboard** with Lost / Found tabs, search (name, place, description), category and status filters, pagination
-- **Private in-app chat.** "I found this" on a lost report, "This is mine" on a found one. Conversations stay private between the poster and each visitor — no emails are sent or exposed
-- **Possible matches** shown on every open report (opposite type, same category, within 14 days, shared words)
-- **Report CRUD** with categories, photo upload (drag & drop, preview, type/size checks), and automatic clean-up of old photos
-- **AJAX "Mark resolved"** with CSRF protection and a confirm dialog (allowed for the poster or staff); resolving locks existing chats to read-only
-- **My reports & Messages inbox** with unread-message badges
-- **Light / dark theme**, responsive layout, keyboard-accessible, respects reduced-motion
-- **Admin**: filters, inline status edit, bulk "mark resolved", conversation & message inspection
-- **`seed_demo`** command to fill the app with sample data
-- **Automated test suite** covering auth, CRUD, chat, permissions, and matching
+| | |
+|---|---|
+| 🔐 **Domain-locked sign-in** | Google login only. The email must be verified **and** belong to your institution's domain, checked on the server. Local sign-up is closed. |
+| 🗂️ **Smart dashboard** | Lost / Found tabs, search (name, place, description), category and status filters, pagination. |
+| 🎯 **Possible matches** | Open reports of the opposite type, in the same category, within 14 days and with shared words are suggested automatically. |
+| 💬 **Private chat** | One-to-one chats between the poster and a visitor, with auto-refresh, unread badges, **Seen** indicator, date separators and multi-line messages. |
+| 📸 **Photo upload** | Drag & drop, live preview, JPEG/PNG/WebP validation, 5 MB limit, automatic clean-up of replaced photos. |
+| ✅ **Mark resolved** | AJAX with a confirm dialog and a stamp animation. Resolving makes the chat read-only. |
+| 📬 **My reports & Messages** | Everything you posted and every conversation in one place, with unread counts. |
+| 🎨 **Polished UI** | Ticket-style cards (red = Lost, teal = Found), light & dark theme, smooth animations, toasts, reduced-motion support. |
+| 🛠️ **Admin tools** | Filters, inline status edit, bulk "mark resolved", read-only message inspection. |
+| 🧪 **Tested** | 100+ automated tests for auth, CRUD, chat, permissions and matching. |
 
 ---
 
-## 📁 Project structure (MVT mapping for viva)
+## 🧭 How it works
 
-| Layer | File(s) | Purpose |
-|---|---|---|
-| **Model** | `items/models.py` | `UserProfile`, `ItemReport` (with categories), `Conversation`, `Message` |
-| **View** | `items/views.py` | Dashboard, detail, CRUD, resolve (AJAX), inbox & chat (`start_chat`, `chat_detail`, `send_message`, `poll_chat`) |
-| **Template** | `templates/base.html`, `items/templates/items/` | Django Template Language; `inbox.html`, `chat.html`, `_item_card`, `_item_form`, `_field`, `_pagination` |
-| URLs | `lostfound_project/urls.py`, `items/urls.py` | URL → view mapping |
-| Forms | `items/forms.py` | `ItemReportForm` (validation), `MessageForm` |
-| Auth adapters | `items/adapter.py` | Domain restriction + closed local sign-up |
-| Matching | `items/matching.py` | "Possible matches" scoring |
-| Signals | `items/signals.py` | Auto-create profile; delete orphaned photos |
-| Context processor | `items/context_processors.py` | Unread-message count, avatar, upload limit in every template |
-| Template tags | `items/templatetags/items_extras.py` | Pagination URLs that keep filters, short "ago" format |
-| Admin | `items/admin.py` | Admin configuration (including `Conversation` + read-only `Message` inline) |
-| Static | `static/css/style.css`, `static/js/main.js`, `static/js/chat.js` | Design system, theme, toasts, AJAX, photo picker, chat polling |
+```mermaid
+flowchart LR
+    A["📝 Post a report<br/>Lost or Found"] --> B["🎯 Possible matches<br/>suggested automatically"]
+    B --> C["💬 Private chat<br/>nothing personal shared"]
+    C --> D["✅ Mark resolved<br/>chat becomes read-only"]
+```
+
+1. **Post a report** with a photo, the place and the date.
+2. **Check the matches** — the app suggests similar reports from the other side, or someone messages you.
+3. **Chat privately** — ask for details only the real owner would know, and meet in a public place.
+4. **Mark it resolved** — the report leaves the open lists so nobody keeps searching.
 
 ---
 
-## 🚀 Setup
+## 🚀 Quick start
 
 ```bash
+git clone https://github.com/mehta-aryan/lost-and-found.git
+cd lost-and-found
+
 python -m venv venv
-venv\Scripts\activate          # Windows   (macOS/Linux: source venv/bin/activate)
+venv\Scripts\activate          # Windows  (macOS/Linux: source venv/bin/activate)
 pip install -r requirements.txt
 
-copy .env.example .env         # macOS/Linux: cp .env.example .env   — then edit .env
+copy .env.example .env         # macOS/Linux: cp .env.example .env  — then edit .env
 
 python manage.py migrate
 python manage.py createsuperuser
@@ -56,57 +98,144 @@ python manage.py seed_demo     # optional: sample reports and conversations
 python manage.py runserver
 ```
 
-Open http://127.0.0.1:8000
+Open **http://127.0.0.1:8000** 🎉
 
-**Signing in without Google (development):** sign in at http://127.0.0.1:8000/admin/ with your superuser, then open http://127.0.0.1:8000/ — the session is shared.
+> **Sign in without Google (development):** log in at `/admin/` with your superuser, then open `/` — the session is shared.
 
 ---
 
-## 🔐 Google OAuth
+## 🧰 Tech stack
+
+| Area | Tools |
+|---|---|
+| **Backend** | Django (MVT), django-allauth |
+| **Frontend** | Django templates, Bootstrap 5, Bootstrap Icons, vanilla JS — no build step |
+| **Database** | SQLite (development) |
+| **Auth** | Google OAuth 2.0 + server-side email-domain check |
+| **Images** | Pillow |
+
+---
+
+## 📁 Project structure
+
+```text
+lost-and-found/
+├── items/                      # main app
+│   ├── models.py               # UserProfile, ItemReport, Conversation, Message
+│   ├── views.py                # dashboard, detail, CRUD, resolve, inbox, chat
+│   ├── forms.py                # ItemReportForm, MessageForm
+│   ├── matching.py             # "possible matches" scoring
+│   ├── adapter.py              # domain restriction + closed sign-up
+│   ├── signals.py              # auto profile, orphaned-photo cleanup
+│   ├── context_processors.py   # unread count, avatar, upload limit
+│   ├── templatetags/           # pagination helpers, "ago" filter
+│   ├── templates/items/        # dashboard, detail, chat, inbox, forms, cards
+│   ├── management/commands/    # seed_demo
+│   └── tests.py
+├── lostfound_project/          # settings, root URLs
+├── templates/                  # base.html, login & logout pages
+├── static/
+│   ├── css/style.css           # design system, themes, animations
+│   └── js/                     # main.js (UI, AJAX), chat.js (chat polling)
+├── .env.example
+├── manage.py
+└── requirements.txt
+```
+
+---
+
+## 📚 More details
+
+<details>
+<summary><b>🔐 Google OAuth setup</b></summary>
+
+<br>
 
 1. [Google Cloud Console](https://console.cloud.google.com/) → new project → **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**
 2. Authorized redirect URI: `http://127.0.0.1:8000/accounts/google/login/callback/`
 3. Give Django the credentials, either:
    - **A. `.env`** (simplest): set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, or
-   - **B. Admin**: leave those two empty; in `/admin/` edit **Sites** (domain `127.0.0.1:8000`) and add a **Social application** (Google) with your ID/secret and that site.
-4. **Restrict to your college** — set `DJANGO_ALLOWED_EMAIL_DOMAIN=yourcollege.edu` in `.env`.
-   The default `gmail.com` lets any Gmail user in. The check runs on the server and also requires Google to report the email as verified.
+   - **B. Admin**: leave those empty; in `/admin/` edit **Sites** (domain `127.0.0.1:8000`) and add a **Social application** (Google) with your ID/secret and that site.
+4. **Restrict sign-in to your institution** with `DJANGO_ALLOWED_EMAIL_DOMAIN=yourdomain.edu` in `.env`. The default `gmail.com` lets any Gmail user in. The check runs on the server and also requires Google to report the email as verified.
+5. While the OAuth consent screen is in *Testing* mode, add the accounts you want to use under **Test users**.
 
----
+</details>
 
-## 💬 How chat works
+<details>
+<summary><b>💬 How chat works</b></summary>
 
-- On any open report, another student can click **I found this** / **This is mine** to open a private 1-on-1 `Conversation` with the poster.
-- Only the poster and that visitor can view, send, or poll messages in the conversation (everyone else gets 404).
-- New messages are fetched automatically every ~4 seconds while the tab is visible (`chat.js`), and opening or polling marks incoming messages as read.
-- Sending is rate-limited to 30 messages/minute per user via Django's cache.
-- When the poster (or staff) marks the report **Resolved**, existing chats remain readable as read-only history and no new chats or messages can be sent.
-- No emails are sent anywhere in the app, and no user's email address is ever shown to another user.
+<br>
 
----
+- On an open report, another user clicks **I found this** / **This is mine** to open a private 1-on-1 conversation with the poster.
+- Only the poster and that visitor can view, send or poll messages — everyone else gets a 404.
+- New messages arrive about every 4 seconds while the tab is visible (`chat.js`). Opening or polling marks incoming messages as read, and the sender then sees **Seen**.
+- Sending is rate-limited to 30 messages per minute per user (Django cache).
+- When a report is resolved, its chats stay readable but become read-only.
+- No emails are sent anywhere, and no user's email address is ever shown to another user.
 
-## 🧪 Tests
+</details>
+
+<details>
+<summary><b>🎯 How matching works</b></summary>
+
+<br>
+
+For a report, the app looks at **open** reports of the **opposite type** that:
+
+- were posted within **±14 days**,
+- are in the **same category** (or "Other"),
+- are not posted by the same user,
+- and share **two title words**, or **one title word plus the same place or two description words**.
+
+Candidates are scored (title, place and description overlap, same category, closeness in time) and the top 3 are shown. It's plain Python scoring — no external service.
+
+</details>
+
+<details>
+<summary><b>🧪 Running the tests</b></summary>
+
+<br>
 
 ```bash
 python manage.py test items -v2
 ```
 
-Covers: sign-in rules (domain, unverified email, look-alike domains, closed sign-up, landing redirect), dashboard filters and pagination, search, create/edit/delete and ownership, image validation and file clean-up, AJAX resolve (owner + staff + CSRF), private chat (start, send, poll, unread counts, read-only on resolve, 404 for outsiders, no emails sent/exposed), matching rules, My reports, models, profile signal, template filters and `seed_demo`.
+Covers sign-in rules (domain, unverified email, look-alike domains, closed sign-up), dashboard filters and pagination, search, create/edit/delete and ownership, image validation and file clean-up, AJAX resolve (owner, staff, CSRF), private chat (start, send, poll, unread counts, read-only on resolve, 404 for outsiders), matching rules, My reports, models, the profile signal, template filters and `seed_demo`.
 
----
+</details>
 
-## 🛡️ Security notes
+<details>
+<summary><b>🛡️ Security notes</b></summary>
+
+<br>
 
 - Secrets and `DEBUG` come from environment variables; the app refuses to start with `DJANGO_DEBUG=0` and no secret key.
-- Every write and chat access is checked on the server for ownership/participation (hiding buttons is not relied on).
+- Every write and chat access is checked on the server for ownership or participation — hiding buttons is never relied on.
 - Uploads must be real JPEG/PNG/WebP images (checked with Pillow, not the file name) and under 5 MB.
 - All state-changing views are POST + CSRF protected.
-- When deploying: set `DJANGO_DEBUG=0`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_HTTPS=1`, `DJANGO_ALLOWED_EMAIL_DOMAIN`, run `collectstatic`, and serve static/media with your web server (or WhiteNoise).
+- Chat text is rendered with `textContent`, so user input is never injected as HTML.
+
+</details>
+
+<details>
+<summary><b>🌍 Deployment notes</b></summary>
+
+<br>
+
+- Set `DJANGO_DEBUG=0`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_HTTPS=1` and `DJANGO_ALLOWED_EMAIL_DOMAIN`.
+- Run `collectstatic` and serve static files with your web server (or WhiteNoise).
+- Uploaded images are only served by Django while `DJANGO_DEBUG=1`; in production serve `media/` from your web server or object storage.
+- On hosts with ephemeral disks, use a persistent database and media storage instead of SQLite and the local `media/` folder.
+- Bootstrap, Bootstrap Icons and Google Fonts load from CDNs, so browsers need internet access.
+
+</details>
 
 ---
 
-## 📌 Notes
+<div align="center">
 
-- Database: SQLite. Media: `media/`. Static: `static/`.
-- Bootstrap, Bootstrap Icons and Google Fonts are loaded from CDNs, so the browser needs internet access.
-- No React, DRF or Tailwind: just Django + Bootstrap + a little vanilla JS.
+Made with ☕ by <a href="https://github.com/mehta-aryan"><b>mehta-aryan</b></a>
+
+<sub>Built with Django & Bootstrap</sub>
+
+</div>

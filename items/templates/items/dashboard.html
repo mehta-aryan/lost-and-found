@@ -7,30 +7,32 @@
   <div class="row g-4 align-items-center">
     <div class="col-lg-7">
       <h1 class="display-title">Lost something on campus?</h1>
-      <p class="lede">Search what's been reported, or post your own. Anyone who recognises an item can message you directly.</p>
+      <p class="lede">Search what's been reported, or post your own. Anyone who recognises an item can message you
+        directly.</p>
 
       <form method="get" action="{% url 'dashboard' %}" class="search-bar" role="search">
         <div class="search-field">
           <i class="bi bi-search" aria-hidden="true"></i>
           <input type="search" name="q" class="form-control" value="{{ query }}"
-                 placeholder="Search by name, place or description" aria-label="Search reports">
+            placeholder="Search by name, place or description" aria-label="Search reports">
         </div>
         <select name="category" class="form-select" data-autosubmit aria-label="Category">
           <option value="">All categories</option>
           {% for value, label in categories %}
-          <option value="{{ value }}" {% if value == category %}selected{% endif %}>{{ label }}</option>
+          <option value="{{ value }}" {% if value==category %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
         <select name="status" class="form-select" data-autosubmit aria-label="Status">
-          <option value="open" {% if status == 'open' %}selected{% endif %}>Open</option>
-          <option value="resolved" {% if status == 'resolved' %}selected{% endif %}>Resolved</option>
-          <option value="all" {% if status == 'all' %}selected{% endif %}>All</option>
+          <option value="open" {% if status=='open' %}selected{% endif %}>Open</option>
+          <option value="resolved" {% if status=='resolved' %}selected{% endif %}>Resolved</option>
+          <option value="all" {% if status=='all' %}selected{% endif %}>All</option>
         </select>
         <button class="btn btn-primary" type="submit">Search</button>
       </form>
       {% if filters_active %}<a class="clear-link" href="{% url 'dashboard' %}">Clear search and filters</a>{% endif %}
 
-      <p class="reunited tnum"><i class="bi bi-patch-check-fill" aria-hidden="true"></i>{{ stats.resolved }} report{{ stats.resolved|pluralize }} resolved so far</p>
+      <p class="reunited tnum"><i class="bi bi-patch-check-fill" aria-hidden="true"></i>{{ stats.resolved }} report{{
+        stats.resolved|pluralize }} resolved so far</p>
     </div>
 
     <div class="col-lg-5">
@@ -51,23 +53,25 @@
 <ul class="nav seg mb-4" id="itemTabs" role="tablist" data-explicit="{% if tab_explicit %}1{% else %}0{% endif %}">
   <li class="nav-item" role="presentation">
     <button class="nav-link is-lost {% if active_tab == 'lost' %}active{% endif %}" id="lost-tab" data-bs-toggle="tab"
-            data-bs-target="#lostPane" type="button" role="tab" aria-controls="lostPane"
-            aria-selected="{% if active_tab == 'lost' %}true{% else %}false{% endif %}">
+      data-bs-target="#lostPane" type="button" role="tab" aria-controls="lostPane"
+      aria-selected="{% if active_tab == 'lost' %}true{% else %}false{% endif %}">
       <span class="dot" aria-hidden="true"></span> Lost <span class="count tnum">{{ lost_page.paginator.count }}</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link is-found {% if active_tab == 'found' %}active{% endif %}" id="found-tab" data-bs-toggle="tab"
-            data-bs-target="#foundPane" type="button" role="tab" aria-controls="foundPane"
-            aria-selected="{% if active_tab == 'found' %}true{% else %}false{% endif %}">
-      <span class="dot" aria-hidden="true"></span> Found <span class="count tnum">{{ found_page.paginator.count }}</span>
+    <button class="nav-link is-found {% if active_tab == 'found' %}active{% endif %}" id="found-tab"
+      data-bs-toggle="tab" data-bs-target="#foundPane" type="button" role="tab" aria-controls="foundPane"
+      aria-selected="{% if active_tab == 'found' %}true{% else %}false{% endif %}">
+      <span class="dot" aria-hidden="true"></span> Found <span class="count tnum">{{ found_page.paginator.count
+        }}</span>
     </button>
   </li>
 </ul>
 
 <div class="tab-content">
   <!-- Lost -->
-  <div class="tab-pane fade {% if active_tab == 'lost' %}show active{% endif %}" id="lostPane" role="tabpanel" aria-labelledby="lost-tab" tabindex="0">
+  <div class="tab-pane fade {% if active_tab == 'lost' %}show active{% endif %}" id="lostPane" role="tabpanel"
+    aria-labelledby="lost-tab" tabindex="0">
     {% if lost_page.object_list %}
     <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 g-4">
       {% for item in lost_page %}{% include "items/_item_card.html" with loop_i=forloop.counter0 %}{% endfor %}
@@ -90,7 +94,8 @@
   </div>
 
   <!-- Found -->
-  <div class="tab-pane fade {% if active_tab == 'found' %}show active{% endif %}" id="foundPane" role="tabpanel" aria-labelledby="found-tab" tabindex="0">
+  <div class="tab-pane fade {% if active_tab == 'found' %}show active{% endif %}" id="foundPane" role="tabpanel"
+    aria-labelledby="found-tab" tabindex="0">
     {% if found_page.object_list %}
     <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 g-4">
       {% for item in found_page %}{% include "items/_item_card.html" with loop_i=forloop.counter0 %}{% endfor %}
