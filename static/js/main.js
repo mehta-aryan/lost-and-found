@@ -8,6 +8,8 @@
  *  5. Photo picker: preview, drag & drop, type/size check
  *  6. Dashboard: remember last tab, auto-submit filter selects
  *  7. Copy-link button
+ *  8. Count-up animation for resolved count + tab counts
+ *  9. Card stagger index + image shimmer cleanup
  */
 (function () {
   'use strict';
@@ -50,7 +52,8 @@
     el.setAttribute('role', kind === 'danger' ? 'alert' : 'status');
     el.setAttribute('aria-live', kind === 'danger' ? 'assertive' : 'polite');
     el.innerHTML = '<div class="d-flex"><div class="toast-body"></div>' +
-      '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>';
+      '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>' +
+      '<div class="toast-progress"></div>';
     el.querySelector('.toast-body').textContent = message;      // textContent → no HTML injection
     stack.appendChild(el);
     el.addEventListener('hidden.bs.toast', function () { el.remove(); });
@@ -130,9 +133,18 @@
       .then(function (result) {
         if (!(result.ok && result.data.success)) throw new Error(result.data.error || 'Could not resolve this report.');
 
-        if (btn.hasAttribute('data-reload')) {                  // detail page: reload to refresh actions
+        if (btn.hasAttribute('data-reload')) {                  // detail page: show stamp then reload
+          // Stamp animation on the ticket media/photo frame
+          var mediaArea = document.querySelector('.photo-frame, .tag-media');
+          if (mediaArea && !mediaArea.querySelector('.stamp')) {
+            var stamp = document.createElement('span');
+            stamp.className = 'stamp animate-in';
+            stamp.setAttribute('data-label', 'Resolved');
+            mediaArea.style.position = 'relative';
+            mediaArea.appendChild(stamp);
+          }
           try { sessionStorage.setItem('lf-flash', JSON.stringify({ message: 'Report marked as resolved.', kind: 'success' })); } catch (e) { /* ignore */ }
-          window.location.reload();
+          setTimeout(function () { window.location.reload(); }, 650);
           return;
         }
         $$('.tag-card[data-item-id="' + id + '"]').forEach(function (card) {
@@ -140,7 +152,7 @@
           var media = $('.tag-media', card);
           if (media && !$('.stamp', media)) {
             var stamp = document.createElement('span');
-            stamp.className = 'stamp';
+            stamp.className = 'stamp animate-in';
             stamp.setAttribute('data-label', 'Resolved');
             media.appendChild(stamp);
           }
@@ -240,4 +252,57 @@
       });
     });
   });
+
+  /* ── 8. Count-up animation ────────────────── */
+  function countUp(el) {
+    var target = parseInt(el.textContent, 10);
+    if (!target || target < 2) return;   // no point animating 0 or 1
+    var start = 0;
+    var dur = 600;
+    var startTs = null;
+    function step(ts) {
+      if (!startTs) startTs = ts;
+      var prog = Math.min((ts - startTs) / dur, 1);
+      // ease-out: prog^0.5
+      el.textContent = Math.round(start + (target - start) * Math.sqrt(prog));
+      if (prog < 1) requestAnimationFrame(step);
+      else el.textContent = target;
+    }
+    requestAnimationFrame(step);
+  }
+
+  // Resolved count
+  $$('.reunited.tnum').forEach(function (el) {
+    // The number is inside the text; we need to target just the number
+    // The HTML is: "N reports resolved so far" — wrap the number via JS
+    var text = el.textContent;
+    var m = text.match(/^(\d+)/);
+    if (!m) return;
+    var span = document.createElement('span');
+    span.textContent = m[1];
+    el.textContent = text.replace(m[1], '');
+    el.prepend(span);
+    countUp(span);
+  });
+
+  // Tab count badges
+  $$('.seg .count.tnum').forEach(function (el) {
+    countUp(el);
+  });
+
+  /* ── 9. Image shimmer cleanup ─────────────── */
+  $$('img[loading="lazy"]').forEach(function (img) {
+    if (img.complete) {
+      img.classList.add('loaded');
+    } else {
+      img.addEventListener('load', function () { img.classList.add('loaded'); });
+    }
+  });
+
+  /* ── 10. Card stagger --i index ───────────── */
+  $$('.tag-card').forEach(function (card, i) {
+    // Cap at 8 for performance (after that instant)
+    card.style.setProperty('--i', Math.min(i, 8));
+  });
+
 })();
