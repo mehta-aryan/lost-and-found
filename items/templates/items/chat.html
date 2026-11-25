@@ -62,7 +62,7 @@
          data-closed="{% if closed %}1{% else %}0{% endif %}">
       {# Initial messages rendered server-side; JS will keep them in sync #}
       {% for msg in msgs %}
-      <div class="msg-group {% if msg.sender_id == request.user.id %}mine{% else %}theirs{% endif %}" data-msg-id="{{ msg.pk }}" data-ts="{{ msg.created_at.isoformat }}">
+      <div class="msg-group {% if msg.sender_id == request.user.id %}mine{% else %}theirs{% endif %}" data-msg-id="{{ msg.pk }}" data-ts="{{ msg.created_at.isoformat }}" data-read="{% if msg.read_at %}1{% else %}0{% endif %}">
         <div class="bubble {% if msg.sender_id == request.user.id %}bubble-mine{% else %}bubble-theirs{% endif %}" data-body="{{ msg.body }}"></div>
         <div class="bubble-meta"></div>
       </div>

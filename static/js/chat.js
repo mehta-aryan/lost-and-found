@@ -131,6 +131,36 @@
     if (atBottom) scrollToBottom();
   }
 
+  // ── Seen indicator ───────────────────────────────────────────────────────
+  var seenEl = null;  // the current "Seen" element
+
+  function updateSeenIndicator(seen) {
+    if (!seen) {
+      if (seenEl && seenEl.parentNode) seenEl.parentNode.removeChild(seenEl);
+      return;
+    }
+    var mineGroups = box.querySelectorAll('.msg-group.mine');
+    if (!mineGroups.length) {
+      if (seenEl && seenEl.parentNode) seenEl.parentNode.removeChild(seenEl);
+      return;
+    }
+    var lastMine = mineGroups[mineGroups.length - 1];
+    if (seenEl && seenEl.parentNode === lastMine) return;
+    if (seenEl && seenEl.parentNode) seenEl.parentNode.removeChild(seenEl);
+    if (!seenEl) {
+      seenEl = document.createElement('div');
+      seenEl.className = 'seen-indicator';
+      seenEl.innerHTML = '<i class="bi bi-check2-all" aria-hidden="true"></i> Seen';
+    }
+    lastMine.appendChild(seenEl);
+    if (atBottom) scrollToBottom();
+  }
+
+  var initialMine = box.querySelectorAll('.msg-group.mine');
+  if (initialMine.length) {
+    updateSeenIndicator(initialMine[initialMine.length - 1].getAttribute('data-read') === '1');
+  }
+
   // ── Polling ──────────────────────────────────────────────────────────────
   var pollTimer = null;
   var POLL_MS   = 4000;
@@ -145,7 +175,20 @@
           closed = true;
           showClosedBanner();
         }
-        (data.messages || []).forEach(appendMessage);
+        var msgs = data.messages || [];
+        var maxSeenId = after;
+        msgs.forEach(function (m) {
+          appendMessage(m);
+          maxSeenId = Math.max(maxSeenId, Number(m.id) || 0);
+        });
+        if (typeof data.seen !== 'undefined') {
+          var mineGroups = box.querySelectorAll('.msg-group.mine');
+          var lastMine = mineGroups.length ? mineGroups[mineGroups.length - 1] : null;
+          // Guard against a stale poll overriding a message just sent in this tab
+          if (!lastMine || Number(lastMine.dataset.msgId) <= maxSeenId) {
+            updateSeenIndicator(Boolean(data.seen));
+          }
+        }
       })
       .catch(function () { /* silent — network hiccup */ });
   }
@@ -241,6 +284,7 @@
         textarea.value = '';
         textarea.style.height = '';   // reset auto-grow
         appendMessage(res.d);
+        updateSeenIndicator(Boolean(res.d.read));
         scrollToBottom();
         atBottom = true;
       })

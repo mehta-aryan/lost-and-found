@@ -589,6 +589,7 @@ class ChatTests(BaseTestCase):
         self.assertIn('id', data)
         self.assertEqual(data['body'], 'Hey')
         self.assertTrue(data['mine'])
+        self.assertFalse(data['read'])
 
     def test_empty_message_rejected(self):
         conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
@@ -625,6 +626,23 @@ class ChatTests(BaseTestCase):
         self.client.force_login(self.user2)
         data = self.client.get(reverse('poll_chat', args=[conv.pk])).json()
         self.assertTrue(data['closed'])
+
+    def test_poll_seen_and_read_flags(self):
+        conv = Conversation.objects.create(item=self.lost_item, participant=self.user2)
+        m1 = Message.objects.create(conversation=conv, sender=self.user2, body='Are you there?')
+        self.client.force_login(self.user2)
+        data = self.client.get(reverse('poll_chat', args=[conv.pk]), {'after': m1.pk}).json()
+        self.assertFalse(data['seen'])
+
+        # Owner polls and marks m1 as read
+        self.client.force_login(self.user1)
+        owner_data = self.client.get(reverse('poll_chat', args=[conv.pk])).json()
+        self.assertTrue(owner_data['messages'][0]['read'])
+
+        # Sender polls and now sees seen=True
+        self.client.force_login(self.user2)
+        data = self.client.get(reverse('poll_chat', args=[conv.pk]), {'after': m1.pk}).json()
+        self.assertTrue(data['seen'])
 
     # ── Unread / mark-as-read ─────────────────────────────────────────────
 

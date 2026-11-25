@@ -352,7 +352,6 @@ def send_message(request, pk):
     conv.touch()
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        other = conv.other_user(request.user)
         return JsonResponse({
             'id': msg.pk,
             'body': msg.body,
@@ -360,6 +359,7 @@ def send_message(request, pk):
             'sender_name': _display_name(msg.sender),
             'ts': msg.created_at.isoformat(),
             'mine': True,
+            'read': msg.read_at is not None,
         })
 
     return redirect('chat_detail', pk=conv.pk)
@@ -394,9 +394,15 @@ def poll_chat(request, pk):
             'sender_name': _display_name(m.sender),
             'ts': m.created_at.isoformat(),
             'mine': m.sender_id == request.user.id,
+            'read': m.read_at is not None,
         })
 
-    return JsonResponse({'messages': data, 'closed': not conv.item.is_open})
+    # Also tell the sender if their last message was read by the other side
+    # (used for the "Seen" indicator in the UI)
+    last_mine = conv.messages.filter(sender=request.user).order_by('-pk').first()
+    seen = last_mine.read_at is not None if last_mine else False
+
+    return JsonResponse({'messages': data, 'closed': not conv.item.is_open, 'seen': seen})
 
 
 # ── My Reports ────────────────────────────────────────────
