@@ -19,20 +19,19 @@
         <select name="category" class="form-select" data-autosubmit aria-label="Category">
           <option value="">All categories</option>
           {% for value, label in categories %}
-          <option value="{{ value }}" {% if value==category %}selected{% endif %}>{{ label }}</option>
+          <option value="{{ value }}" {% if value == category %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
         <select name="status" class="form-select" data-autosubmit aria-label="Status">
-          <option value="open" {% if status=='open' %}selected{% endif %}>Open</option>
-          <option value="resolved" {% if status=='resolved' %}selected{% endif %}>Resolved</option>
-          <option value="all" {% if status=='all' %}selected{% endif %}>All</option>
+          <option value="open" {% if status == 'open' %}selected{% endif %}>Open</option>
+          <option value="resolved" {% if status == 'resolved' %}selected{% endif %}>Resolved</option>
+          <option value="all" {% if status == 'all' %}selected{% endif %}>All</option>
         </select>
         <button class="btn btn-primary" type="submit">Search</button>
       </form>
       {% if filters_active %}<a class="clear-link" href="{% url 'dashboard' %}">Clear search and filters</a>{% endif %}
 
-      <p class="reunited tnum"><i class="bi bi-patch-check-fill" aria-hidden="true"></i>{{ stats.resolved }} report{{
-        stats.resolved|pluralize }} resolved so far</p>
+      <p class="reunited tnum"><i class="bi bi-patch-check-fill" aria-hidden="true"></i>{{ stats.resolved }} report{{ stats.resolved|pluralize }} resolved so far</p>
     </div>
 
     <div class="col-lg-5">
@@ -62,8 +61,7 @@
     <button class="nav-link is-found {% if active_tab == 'found' %}active{% endif %}" id="found-tab"
       data-bs-toggle="tab" data-bs-target="#foundPane" type="button" role="tab" aria-controls="foundPane"
       aria-selected="{% if active_tab == 'found' %}true{% else %}false{% endif %}">
-      <span class="dot" aria-hidden="true"></span> Found <span class="count tnum">{{ found_page.paginator.count
-        }}</span>
+      <span class="dot" aria-hidden="true"></span> Found <span class="count tnum">{{ found_page.paginator.count }}</span>
     </button>
   </li>
 </ul>
